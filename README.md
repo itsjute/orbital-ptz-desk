@@ -4,6 +4,8 @@ A browser-based control desk for network PTZ cameras: live video, smooth joystic
 preset moves, focus pulling, exposure control, recording and post stabilization – served by a
 small Python server on your own computer, no cloud and no installation beyond Python and go2rtc.
 
+![PTZ Desk: live video with joystick, zoom and focus rockers, focus and exposure controls, actions and presets](docs/screenshot.png)
+
 It was built to film stage performances from the back of a room with a PoE PTZ camera, where
 every pan has to look calm on the recording and every control has to be within reach without
 scrolling.
