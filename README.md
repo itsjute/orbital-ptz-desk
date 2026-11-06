@@ -116,7 +116,8 @@ On Windows, `start.bat` runs `server.py` in a console window. Run from source, s
 state files live next to `server.py`. Any current Chrome, Edge or Firefox works as the browser.
 
 **Building the installer yourself:** the workflow in `.github/workflows/release.yml` does it on
-GitHub (*Actions → Windows installer → Run workflow*; pushing a tag `v*` also publishes a release).
+GitHub (*Actions → Windows installer → Run workflow*: without a version it only builds, with a
+version such as `1.2.0` it also publishes the release; pushing a tag `v1.2.0` does the same).
 The files in `packaging/` are the PyInstaller spec, the Inno Setup script and the icon.
 
 ## Configuration

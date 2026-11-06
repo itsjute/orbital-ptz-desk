@@ -1,13 +1,20 @@
 name: Windows installer
 
 # Builds "PTZ Desk.exe" with PyInstaller, adds go2rtc and FFmpeg and packs everything into an
-# Inno Setup installer with optional components. A tag like v1.2.0 publishes a GitHub release;
-# "Run workflow" (manual) only builds and keeps the installer as a workflow artifact.
+# Inno Setup installer with optional components. Publishing a release:
+#   - push a tag like v1.2.0, or
+#   - "Run workflow" with a version (1.2.0): creates the tag v1.2.0 on the chosen commit.
+# "Run workflow" without a version only builds and keeps the files as a workflow artifact.
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a release with this version, e.g. 1.2.0 (empty = test build only)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -27,9 +34,17 @@ jobs:
           python-version: "3.12"
 
       - name: Version
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
         run: |
-          if ($env:GITHUB_REF_TYPE -eq 'tag') { $v = $env:GITHUB_REF_NAME -replace '^v', '' }
+          $publish = 'false'
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $v = $env:GITHUB_REF_NAME -replace '^v', ''; $publish = 'true' }
+          elseif ($env:RELEASE_INPUT) {
+            if ($env:RELEASE_INPUT -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.]+)?$') { throw "Version must look like 1.2.0" }
+            $v = $env:RELEASE_INPUT; $publish = 'true'
+          }
           else { $v = "0.0.0-dev.$env:GITHUB_RUN_NUMBER" }
+          "PUBLISH=$publish" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Set-Content -Path version.txt -Value $v -NoNewline -Encoding utf8NoBOM
           "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Version $v"
@@ -123,8 +138,24 @@ jobs:
           if-no-files-found: error
 
       - name: Publish release
-        if: github.ref_type == 'tag'
+        if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: PTZ Desk ${{ env.VERSION }}
           files: build/installer/*
           generate_release_notes: true
+          body: |
+            ## Download
+
+            **Windows 10/11:** `PTZ-Desk-${{ env.VERSION }}-Setup.exe` – run it, choose the components
+            (FFmpeg for audio inputs and stabilization, NumPy/OpenCV for stabilization) and start
+            PTZ Desk from the Start menu. No admin rights needed. The installer is not code-signed:
+            if SmartScreen warns, choose *More info → Run anyway*.
+
+            **Portable:** `PTZ-Desk-${{ env.VERSION }}-portable.zip` – unpack and run `PTZ Desk.exe`;
+            settings stay in that folder.
+
+            On first start, enter the camera under *Settings → Camera*. See the
+            [README](https://github.com/itsjute/ptz-desk#readme) for all features.
