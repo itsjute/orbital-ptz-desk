@@ -1769,7 +1769,8 @@ E.cfgForm.addEventListener('submit', async (e) => {
     setNote(E.cfNote, res.restart_required ? 'Saved. The page port/network setting takes effect after restarting PTZ Desk.' : 'Saved – connecting …', res.restart_required ? 'warn' : '');
     log('Camera settings saved.', 'ok');
     await sleep(1500);
-    for (let i = 0; i < 12; i++){       // the server reconnects in the background
+    const until = Date.now() + 15000;
+    while (Date.now() < until){         // the server reconnects in the background
       await loadStatus();
       if (S.ptzOk && videoOk(S.status)) break;
       await sleep(1000);
@@ -2339,6 +2340,7 @@ if (location.protocol === 'file:'){
   })();
 }
 
+setInterval(() => { fetch('/api/ping', {cache: 'no-store'}).catch(() => {}); }, 4000);   // keeps the app alive in an Edge/Chrome app window
 window.addEventListener('pagehide', () => { if (anyInput() || (S.motion && S.motion.moving)) fetch('/api/joy/halt', {method: 'POST', keepalive: true, headers: {'Content-Type': 'application/json', 'X-PTZ-Desk': '1'}, body: '{}'}).catch(() => {}); });
 })();
 </script>

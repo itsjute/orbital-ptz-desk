@@ -384,21 +384,26 @@ def apply_config(old, new):
         try:
             App.moves.cancel()
             App.motion.engine.halt()
-            App.ptz.stop()
         except Exception:  # noqa
             pass
-        if App.moves.link is not None:
-            try:
-                App.moves.link.close()
-            except Exception:  # noqa
-                pass
-            App.moves.link = None
+        old_ptz, old_link = App.ptz, App.moves.link
+
+        def let_go():
+            # stopping the old camera may take a while if it is unreachable – not on the request
+            for fn in (old_ptz.stop, old_link.close if old_link else None):
+                try:
+                    fn and fn()
+                except Exception:  # noqa
+                    pass
+        threading.Thread(target=let_go, name="old-camera", daemon=True).start()
+        App.moves.link = None
         App.moves.zoom_direct_ok = App.moves.focus_direct_ok = None
         App.expo.iris_max = None
         App.cam = Onvif(new)
         App.web = WebApi(new)
         App.ptz = Control(new, App.cam, App.web)
         App.dog.cam = App.ptz
+        App.connecting = True
         threading.Thread(target=connect_camera, name="connect", daemon=True).start()
     if (old["rtsp_main"], old["rtsp_sub"]) != (new["rtsp_main"], new["rtsp_sub"]) or (not old["configured"] and new["configured"]):
         App.video.rtsp = {k: v for k, v in (("main", new["rtsp_main"]), ("sub", new["rtsp_sub"])) if v}
@@ -1582,15 +1587,21 @@ class Video:
     def start(self):
         self.streams = self._sources()
         if not self.streams:
-            self.state = "no RTSP address in config.ini"
+            self.state = "no RTSP address set"
             return
         yml = os.path.join(DATA_DIR, "go2rtc.yaml")
+        self.foreign = False
         if self._api_ok():
             info = self._api_info()
             if os.path.normcase(os.path.abspath(info.get("config_path") or "")) == os.path.normcase(yml):
                 log("An old go2rtc from an earlier start is still running – stopping it.")
                 self._exit_running()
-            else:
+            elif self._ours(info.get("config_path")):
+                # left over from another PTZ Desk copy (source folder, portable, installed) – only
+                # one of them can run at a time (same page port), so that one is not in use
+                log(f"go2rtc of another PTZ Desk copy is still running ({info.get('config_path')}) – stopping it.")
+                self._exit_running()
+            if self._api_ok():
                 # Another go2rtc (e.g. left over from an earlier start, or an older version that does not
                 # report its config path): register our streams there instead of failing with "stream not found".
                 self.foreign = True
@@ -1640,6 +1651,18 @@ class Video:
             if line:
                 log("go2rtc: " + line)
         proc.stdout.close()
+
+    @staticmethod
+    def _ours(path):
+        """Was this go2rtc config written by PTZ Desk (any version)?"""
+        try:
+            if not path or os.path.basename(path).lower() != "go2rtc.yaml":
+                return False
+            with open(path, encoding="utf-8", errors="replace") as f:
+                head = f.read(400)
+            return "PTZ Desk" in head or "kamera.ini" in head or "config.ini" in head
+        except OSError:
+            return False
 
     def _api_info(self):
         try:
@@ -2390,6 +2413,8 @@ class Smoother:
 class App:
     cfg = cam = web = ptz = dog = video = rec = motion = cal = smooth = vcheck = focus = names = moves = expo = audio = None
     booting = False
+    connecting = False
+    last_request = 0.0      # monotonic time of the page's last request (app.py watches it)
 
 
 def open_path(path):
@@ -2421,12 +2446,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
         data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+        except (ConnectionError, OSError):
+            pass   # the page went away (window closed or reloaded) before the answer
 
     def _guard(self, post):
         # DNS-rebinding protection: only answer to localhost/IP host names,
@@ -2434,6 +2462,7 @@ class Handler(BaseHTTPRequestHandler):
         if not is_safe_host(self.headers.get("Host")):
             self._send(403, {"error": "Host not allowed"})
             return False
+        App.last_request = time.monotonic()
         if post and self.headers.get("X-PTZ-Desk") != "1":
             self._send(403, {"error": "Request not from the control page"})
             return False
@@ -2456,6 +2485,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             return self._status()
+        if path == "/api/ping":
+            return self._send(200, {"ok": True})
         if path == "/api/log":
             try:
                 since = int(parse_qs(urlparse(self.path).query).get("since", ["0"])[0])
@@ -2662,7 +2693,7 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     def _status(self):
-        if App.booting or not App.cfg["configured"]:
+        if App.booting or App.connecting or not App.cfg["configured"]:
             return self._send(200, self._status_dict())
         if App.cfg["control"] != "onvif" and not App.web.connected:
             try:
@@ -2695,6 +2726,13 @@ class Handler(BaseHTTPRequestHandler):
 
 def connect_camera():
     """Connect ONVIF and the web API and report what was found (also after settings changes)."""
+    try:
+        _connect_camera()
+    finally:
+        App.connecting = False
+
+
+def _connect_camera():
     cfg = App.cfg
     if not cfg["configured"]:
         return

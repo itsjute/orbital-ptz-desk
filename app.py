@@ -77,37 +77,58 @@ def taskbar_identity():
 class Api:
     """Exposed to the page as window.pywebview.api.*"""
 
+    # pywebview exposes every public attribute to the page and walks into it – so the
+    # window and the state are kept in private attributes (leading underscore).
     def __init__(self):
-        self.window = None
-        self.force = False
-        self.full = False
+        self._window = None
+        self._force = False
+        self._full = False
 
     def pick_folder(self, start=""):
         import webview
         kind = getattr(getattr(webview, "FileDialog", None), "FOLDER", None) or webview.FOLDER_DIALOG
         start = start if start and os.path.isdir(start) else os.path.expanduser("~")
-        res = self.window.create_file_dialog(kind, directory=start)
+        res = self._window.create_file_dialog(kind, directory=start)
         if not res:
             return ""
         return res[0] if isinstance(res, (list, tuple)) else str(res)
 
     def fullscreen(self, on=True):
-        if bool(on) != self.full:
-            self.full = bool(on)
-            self.window.toggle_fullscreen()
-        return self.full
+        if bool(on) != self._full:
+            self._full = bool(on)
+            self._window.toggle_fullscreen()
+        return self._full
 
     def quit(self):
         """Called by the page after the user confirmed closing during a recording."""
-        self.force = True
-        threading.Thread(target=self.window.destroy, daemon=True).start()
+        self._force = True
+        threading.Thread(target=self._window.destroy, daemon=True).start()
 
     def version(self):
         return server.VERSION
 
 
+def unblock_bundle():
+    """Windows marks files unpacked from a downloaded ZIP as coming from the internet, and .NET then
+    refuses to load the DLLs the app window needs (pythonnet, WebView2). Remove that mark."""
+    if os.name != "nt" or not server.FROZEN:
+        return
+    n = 0
+    for d, _dirs, names in os.walk(server.RES_DIR):
+        for name in names:
+            if name.lower().endswith((".dll", ".pyd", ".exe")):
+                try:
+                    os.remove(os.path.join(d, name) + ":Zone.Identifier")
+                    n += 1
+                except OSError:
+                    pass
+    if n:
+        log(f"Unblocked {n} downloaded program files.")
+
+
 def run_window(url):
     """Own window via pywebview. Returns False if that is not possible on this computer."""
+    unblock_bundle()
     try:
         import webview
     except Exception as e:  # noqa
@@ -119,10 +140,10 @@ def run_window(url):
                                     maximized=True, background_color="#0E1217", text_select=True)
     except TypeError:  # older pywebview without some of the options
         win = webview.create_window(TITLE, url, js_api=api, width=1440, height=900, min_size=(960, 600))
-    api.window = win
+    api._window = win
 
     def closing():
-        if server.App.rec and server.App.rec.active and not api.force:
+        if server.App.rec and server.App.rec.active and not api._force:
             # let the page ask (styled dialog); it calls api.quit() when confirmed
             threading.Thread(target=lambda: win.evaluate_js("window.ptzDeskCloseRequest && window.ptzDeskCloseRequest()"),
                              daemon=True).start()
@@ -184,7 +205,15 @@ def run_browser_app(url):
             continue
         log(f"Showing the page in {os.path.basename(exe)} (app mode).")
         server.APP_WINDOW["kind"] = "app-browser"
-        p.wait()
+        # The started process may hand the window over to another Edge/Chrome process and exit
+        # at once, so its end says nothing. The page pings every few seconds instead; once the
+        # process is gone and the page has been silent for a while, the window is closed.
+        server.App.last_request = time.monotonic()
+        while True:
+            time.sleep(1)
+            if p.poll() is not None and time.monotonic() - server.App.last_request > 12:
+                break
+        log("App window closed.")
         return True
     return False
 
