@@ -1,0 +1,2106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PTZ Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Live view: image on the left, controls on the right; stacked below 980px */
+:root{
+  --bg:#ECEFF3; --panel:#FFFFFF; --panel-2:#F4F6F9; --line:#D2D8E0; --fg:#141A22; --muted:#596371;
+  --accent:#B0650A; --accent-fg:#FFFFFF; --accent-soft:#F5E6D1;
+  --tally:#CF3A2C; --ok:#2B8656; --warn:#9A6200;
+  --c-pan:#B0650A; --c-tilt:#1F6FA8; --c-zoom:#7A4FB0;
+  --stage:#090B0E; --stage-fg:#E7EBF0; --stage-muted:#9AA4B1; --stage-line:rgba(231,235,240,.5); --stage-chip:rgba(9,11,14,.62);
+  --f-display:"Barlow Semi Condensed","Barlow","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1217; --panel:#161B22; --panel-2:#1C222B; --line:#29313B; --fg:#E3E7ED; --muted:#8C96A4;
+    --accent:#EFA642; --accent-fg:#1A1206; --accent-soft:#3A2B15;
+    --tally:#FF5B4B; --ok:#4FC28B; --warn:#E3AE4C;
+    --c-pan:#EFA642; --c-tilt:#6AAAE4; --c-zoom:#B99BEA;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1217; --panel:#161B22; --panel-2:#1C222B; --line:#29313B; --fg:#E3E7ED; --muted:#8C96A4;
+  --accent:#EFA642; --accent-fg:#1A1206; --accent-soft:#3A2B15;
+  --tally:#FF5B4B; --ok:#4FC28B; --warn:#E3AE4C;
+  --c-pan:#EFA642; --c-tilt:#6AAAE4; --c-zoom:#B99BEA;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--f-body);-webkit-font-smoothing:antialiased}
+button,select,input,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;padding-block:16px 12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font:600 24px/1.1 var(--f-display);letter-spacing:.01em;margin:0;text-wrap:balance}
+.sub{margin:0;color:var(--muted);font-size:14px}
+.status{margin-left:auto;display:flex;align-items:center;gap:8px;font:500 13px var(--f-mono);color:var(--muted)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--line);flex:none}
+.dot[data-s="live"]{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 25%,transparent)}
+.dot[data-s="busy"]{background:var(--warn)}
+.dot[data-s="err"]{background:var(--tally)}
+
+.banner{margin:0 max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));padding:10px 14px;border:1px solid var(--line);border-left:4px solid var(--warn);background:var(--panel);border-radius:4px;font-size:14px}
+.banner.err{border-left-color:var(--tally)}
+
+.app{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;align-items:start;padding-block:0 28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+@media (max-width:980px){.app{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+
+/* Stage */
+.stage{position:relative;aspect-ratio:16/9;max-width:100%;background:var(--stage);color:var(--stage-fg);border-radius:6px;overflow:hidden}
+.stage:fullscreen{border-radius:0;aspect-ratio:auto}
+.stage video{width:100%;height:100%;object-fit:contain;display:block;background:var(--stage);transition:transform .25s}
+.stage.rot video{transform:rotate(180deg)}
+.overlay{position:absolute;inset:0;pointer-events:none}
+.overlay[data-mode="cross"]::before,.overlay[data-mode="cross"]::after{content:"";position:absolute;left:50%;top:50%;background:var(--stage-line);transform:translate(-50%,-50%)}
+.overlay[data-mode="cross"]::before{width:56px;height:1px}
+.overlay[data-mode="cross"]::after{width:1px;height:56px}
+.overlay[data-mode="thirds"]{background:
+  linear-gradient(to right,transparent calc(33.333% - .5px),var(--stage-line) calc(33.333% - .5px),var(--stage-line) calc(33.333% + .5px),transparent calc(33.333% + .5px),transparent calc(66.666% - .5px),var(--stage-line) calc(66.666% - .5px),var(--stage-line) calc(66.666% + .5px),transparent calc(66.666% + .5px)),
+  linear-gradient(to bottom,transparent calc(33.333% - .5px),var(--stage-line) calc(33.333% - .5px),var(--stage-line) calc(33.333% + .5px),transparent calc(33.333% + .5px),transparent calc(66.666% - .5px),var(--stage-line) calc(66.666% - .5px),var(--stage-line) calc(66.666% + .5px),transparent calc(66.666% + .5px))}
+.hud{position:absolute;inset:0;pointer-events:none;font:500 12px/1.3 var(--f-mono);font-variant-numeric:tabular-nums}
+.hud>div{position:absolute;display:flex;gap:6px;align-items:center;max-width:60%}
+.hud-tl{top:10px;left:10px}.hud-tr{top:10px;right:10px}.hud-bl{bottom:10px;left:10px}.hud-br{bottom:10px;right:10px}
+.chip{background:var(--stage-chip);padding:3px 7px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip.live::before,.chip.rec::before,.chip.mv::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.chip.live::before{background:var(--ok)}
+.chip.rec::before{background:var(--tally);animation:blink 1s steps(2) infinite}
+.chip.mv::before{background:var(--accent)}
+@keyframes blink{50%{opacity:.2}}
+@media (prefers-reduced-motion:reduce){.chip.rec::before{animation:none}.stage video{transition:none}}
+.empty{position:absolute;inset:0;display:grid;place-items:center;padding:20px}
+.empty>div{max-width:460px}
+.empty h2{font:600 22px/1.2 var(--f-display);margin:0 0 8px}
+.empty p{margin:0 0 14px;color:var(--stage-muted)}
+
+
+/* Panels */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px 16px;min-width:0}
+.panel>h2{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font:600 13px/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 12px}
+.panel>h2 small{font:500 12px var(--f-mono);letter-spacing:0;text-transform:none}
+.stack{display:flex;flex-direction:column;gap:12px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label,.lbl{font:500 13px var(--f-display);letter-spacing:.03em;color:var(--muted)}
+select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2)}
+.btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--panel-2);padding:8px 13px;border-radius:4px;font-weight:500;cursor:pointer;line-height:1.2}
+.btn:hover:not(:disabled){border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary:hover:not(:disabled){filter:brightness(1.07);border-color:var(--accent)}
+.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--fg)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.small{padding:5px 9px;font-size:13px}
+.note{font-size:13.5px;color:var(--muted);margin:0}
+.note.warn{color:var(--warn)}
+.note.err{color:var(--tally)}
+kbd{font:500 11.5px var(--f-mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:3px;padding:0 4px;background:var(--panel-2)}
+
+/* Connection */
+.conn{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;margin:0;font-size:14px}
+.conn dt{display:flex;align-items:center;gap:8px;color:var(--muted);font:500 13px var(--f-display);letter-spacing:.03em}
+.conn dd{margin:0;overflow-wrap:anywhere;font:500 13px/1.4 var(--f-mono)}
+
+.ctl-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+input[type="range"]{width:100%;accent-color:var(--accent);margin:0}
+.opts{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px}
+.opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.opts input{accent-color:var(--accent)}
+.presets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.extra{display:flex;flex-wrap:wrap;gap:6px}
+
+/* Diagnostics */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:4px}
+table{border-collapse:collapse;width:100%;font:400 12.5px/1.35 var(--f-mono);font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 12px var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--panel-2)}
+tr:last-child td{border-bottom:0}
+td.k{white-space:nowrap;color:var(--muted)}
+td.v{overflow-wrap:anywhere}
+details summary{cursor:pointer;color:var(--muted);font-size:13.5px}
+textarea{width:100%;min-height:180px;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);font:400 12px/1.4 var(--f-mono);resize:vertical}
+.log{list-style:none;margin:0;padding:0;max-height:190px;overflow:auto;font:400 12px/1.45 var(--f-mono);border:1px solid var(--line);border-radius:4px;background:var(--panel-2)}
+.log li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;padding:3px 10px;border-bottom:1px solid var(--line)}
+.log li:last-child{border-bottom:0}
+.log time{color:var(--muted)}
+.log li.err span{color:var(--tally)}
+.log li.warn span{color:var(--warn)}
+.log li.ok span{color:var(--ok)}
+.log span{overflow-wrap:anywhere}
+
+/* Smooth motion: joystick, zoom rocker, speed meters */
+.joy{position:relative;width:190px;height:190px;max-width:100%;border-radius:50%;border:1px solid var(--line);background:var(--panel-2);touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.joy::before,.joy::after{content:"";position:absolute;background:var(--line);pointer-events:none}
+.joy::before{left:12%;right:12%;top:50%;height:1px}
+.joy::after{top:12%;bottom:12%;left:50%;width:1px}
+.joy.grab{border-color:var(--accent);cursor:grabbing}
+.joy-knob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:50%;background:var(--c-pan);box-shadow:0 2px 6px rgba(0,0,0,.25);transform:translate(-50%,-50%);z-index:1;pointer-events:none}
+.zr-knob{position:absolute;left:50%;top:50%;width:40px;height:30px;border-radius:15px;background:var(--c-zoom);transform:translate(-50%,-50%);pointer-events:none}
+.zr-lbl{position:absolute;left:0;right:0;text-align:center;font:600 11px var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);pointer-events:none}
+.zr-top{top:8px}.zr-bot{bottom:8px}
+.spring .joy-knob,.spring .zr-knob{transition:transform .28s cubic-bezier(.3,1.35,.5,1)}
+@media (prefers-reduced-motion:reduce){.spring .joy-knob,.spring .zr-knob{transition:none}}
+.off{opacity:.4;pointer-events:none}
+.meters{grid-column:1 / -1;display:grid;gap:5px}
+.meter{display:grid;grid-template-columns:56px minmax(0,1fr) 72px;gap:8px;align-items:center;font:500 12px var(--f-mono);font-variant-numeric:tabular-nums}
+.m-lbl{color:var(--muted)}
+.m-track{position:relative;height:8px;border-radius:4px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden}
+.m-track::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--muted)}
+.m-fill{position:absolute;top:0;bottom:0;left:50%;width:0}
+.m-val{text-align:right}
+/* Curve editor */
+.cv{width:100%;height:180px;display:block;border:1px solid var(--line);border-radius:4px;background:var(--panel-2)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:16px;height:3px;border-radius:2px;margin-right:6px;vertical-align:3px}
+.cgrid{display:grid;grid-template-columns:auto repeat(4,minmax(0,1fr));gap:10px 14px;align-items:center}
+@media (max-width:640px){.cgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.cgrid .ax{grid-column:1 / -1}}
+.cgrid .ax{font:600 14px var(--f-display);display:flex;align-items:center;gap:8px}
+.cgrid .ax i{display:inline-block;width:10px;height:10px;border-radius:50%}
+.cgrid .cell{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cgrid output,.cfoot output{font:500 12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.cfoot{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:end}
+@media (max-width:640px){.cfoot{grid-template-columns:minmax(0,1fr)}}
+
+/* Views: Live, Recordings, Settings */
+.tabs{display:flex;gap:3px;border:1px solid var(--line);border-radius:6px;padding:3px;background:var(--panel)}
+.tab{border:0;background:transparent;padding:6px 14px;border-radius:4px;font:600 14px var(--f-display);letter-spacing:.03em;color:var(--muted);cursor:pointer}
+.tab:hover{color:var(--fg)}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-fg)}
+.calbar{height:6px;border-radius:3px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden}
+.calbar>div{height:100%;width:0;background:var(--accent);transition:width .3s}
+@media (prefers-reduced-motion:reduce){.calbar>div{transition:none}}
+
+/* Recordings view */
+.post-head{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;justify-content:space-between}
+.post-head .field{min-width:240px}
+#pfBody td{vertical-align:middle}
+#pfBody .fname{font-weight:500;overflow-wrap:anywhere}
+#pfBody .sub2{display:block;color:var(--muted);font-size:11.5px}
+#pfBody .ok{color:var(--ok)}
+#pfBody .act{white-space:nowrap;text-align:right}
+#pfBody .act .btn{margin-left:6px}
+
+/* ===== Live view: everything at a glance, no scrolling ===== */
+.ic{width:20px;height:20px;flex:none;display:block}
+.tab{display:inline-flex;align-items:center;gap:7px}
+.tab .ic{width:17px;height:17px}
+.panel > h2 .iconbtn{margin-left:auto}
+.iconbtn{display:inline-grid;place-items:center;width:30px;height:28px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);color:var(--fg);cursor:pointer;padding:0}
+.iconbtn .ic{width:16px;height:16px}
+.iconbtn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+/* Controls: joystick + zoom and focus rockers side by side */
+.ctrlrow{display:grid;grid-template-columns:auto auto auto;justify-content:space-between;align-items:center;gap:10px}
+.rock{position:relative;width:48px;height:var(--joy,150px);flex:none;border-radius:24px;border:1px solid var(--line);background:var(--panel-2);touch-action:none;cursor:ns-resize;user-select:none;-webkit-user-select:none}
+.rock .zr-knob{width:38px;height:28px}
+#frock .zr-knob{background:var(--c-tilt)}
+.rock .zr-lbl{display:flex;justify-content:center}
+.rock .zr-lbl .ic{width:15px;height:15px}
+.rocks{display:flex;gap:10px}
+.rockcol{display:flex;flex-direction:column;align-items:center;gap:4px}
+.rockcol > span{font:600 11px var(--f-display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.rock.grab{border-color:var(--accent)}
+.spring .zr-knob{transition:transform .28s cubic-bezier(.3,1.35,.5,1)}
+/* Focus */
+.frow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.segi{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.segi button{display:inline-flex;align-items:center;gap:6px;border:0;border-right:1px solid var(--line);background:var(--panel-2);padding:6px 10px;cursor:pointer;font:500 13.5px var(--f-body);color:var(--fg)}
+.segi button:last-child{border-right:0}
+.segi button .ic{width:16px;height:16px}
+.segi button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+.btn.ib{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;font-size:13.5px}
+.btn.ib .ic{width:16px;height:16px}
+.btn.ib[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.sharp{display:grid;grid-template-columns:auto minmax(0,1fr) 44px;gap:8px;align-items:center;margin-top:8px}
+.sh-track{position:relative;height:10px;border-radius:5px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden}
+#shFill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--ok);transition:width .15s}
+#shPeak{position:absolute;top:-1px;bottom:-1px;width:2px;left:0;background:var(--fg);opacity:.7}
+#shVal{font:500 12px var(--f-mono);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+/* Actions */
+.actgrid{display:grid;grid-template-columns:1.7fr repeat(6,minmax(0,1fr));gap:6px}
+.ibtn{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 2px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--fg);cursor:pointer;min-width:0}
+.ibtn span{font:500 10.5px var(--f-display);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.ibtn:hover:not(:disabled){border-color:var(--muted)}
+.ibtn:disabled{opacity:.4;cursor:not-allowed}
+.ibtn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.ibtn.rec .ic{color:var(--tally)}
+.ibtn.rec[aria-pressed="true"]{background:var(--tally);border-color:var(--tally);color:var(--bg)}
+.ibtn.rec[aria-pressed="true"] .ic{color:var(--bg)}
+#recInfo{margin-top:6px;font-size:12.5px}
+/* Presets */
+.presets{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.pos{position:relative;display:flex;align-items:baseline;gap:7px;min-width:0;text-align:left;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);padding:8px 9px;cursor:pointer;color:var(--fg)}
+.pos b{font:600 13px var(--f-display);color:var(--muted)}
+.pos .pn{font:500 13.5px var(--f-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pos.vacant .pn{color:var(--muted);font-style:italic}
+.pos:hover:not(:disabled){border-color:var(--accent)}
+.pos:disabled{cursor:not-allowed;opacity:.55}
+.pos.flash{border-color:var(--accent);background:var(--accent-soft)}
+.posedit{display:flex;align-items:center;gap:5px;border:1px dashed var(--accent);border-radius:6px;padding:4px 5px;background:var(--panel)}
+.posedit > b{font:600 13px var(--f-display);color:var(--muted)}
+.posedit input{width:100%;min-width:0;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);font-size:13px}
+.posedit .iconbtn.confirm{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+/* Messages as a toast on the image */
+.toast{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);max-width:88%;background:var(--stage-chip);color:var(--stage-fg);font:500 13px var(--f-body);padding:6px 12px;border-radius:5px;z-index:3;border-left:3px solid var(--warn)}
+.toast.err{border-left-color:var(--tally)}
+.stage.lupe video{transform:scale(3)}
+.stage.lupe.rot video{transform:scale(3) rotate(180deg)}
+.kv3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:700px){.kv3{grid-template-columns:1fr}}
+.kv3 select,.kv3 input[type=range]{width:100%}
+.kv3 .field > span{font:500 13px var(--f-display);letter-spacing:.03em;color:var(--muted)}
+.pos .gd{margin-left:auto;align-self:center;width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none}
+.stage video{cursor:crosshair}
+.aim{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border:2px solid var(--accent);border-radius:50%;pointer-events:none;z-index:2;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.aim::after{content:"";position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:var(--accent)}
+.aim.go{transition:left var(--aim-t,1.5s) cubic-bezier(.45,0,.55,1),top var(--aim-t,1.5s) cubic-bezier(.45,0,.55,1),opacity .4s}
+.stps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;margin-top:8px}
+.stp{display:grid;grid-template-columns:26px minmax(0,1fr) 26px;align-items:center;gap:3px}
+.stp[hidden]{display:none}
+.stp-l{grid-column:1/-1;font:500 12px var(--f-display);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stp output{min-width:0;text-align:center;font:500 13px var(--f-mono);font-variant-numeric:tabular-nums}
+.stp .iconbtn{width:26px;height:26px}
+.chip.clip{background:var(--tally);color:#fff}
+.midjoy{position:fixed;width:200px;height:200px;margin:-100px 0 0 -100px;border-radius:50%;border:2px solid var(--accent);background:rgba(0,0,0,.18);pointer-events:none;z-index:50}
+.midjoy::before{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:var(--accent)}
+.midjoy canvas{position:absolute;inset:0;width:100%;height:100%;border-radius:50%}
+.midjoy i{position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;border:2px solid var(--accent);box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+body.midgrab, body.midgrab *{cursor:move!important}
+.settings h3{font:600 14px var(--f-display);margin:4px 0 0;letter-spacing:.02em}
+.keys{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0;font-size:13.5px}
+.keys dt{white-space:nowrap}
+.keys dd{margin:0;color:var(--muted)}
+
+/* ===== Layout: video as large as possible, controls exactly as tall as the video ===== */
+:root{--cw:clamp(300px,25vw,480px);--gap:12px;--side:16px;--hdr:56px}
+.top{height:var(--hdr);padding-block:0;flex-wrap:nowrap}
+.top .status{margin-left:auto}
+.gear{width:38px;height:36px}
+.gear .ic{width:20px;height:20px}
+.app{grid-template-columns:minmax(0,1fr) var(--cw);gap:var(--gap);padding-block:0 var(--side)}
+.controls{gap:8px}
+.controls .panel{padding:8px 10px 10px}
+.panel.ctrl{display:flex;flex-direction:column;justify-content:center}
+.ctrlrow{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.rockcol{display:flex;flex-direction:column;align-items:center;gap:4px;min-height:0}
+.ctrlrow .joy{width:var(--joy,150px);height:var(--joy,150px);flex:none}
+@media (min-width:900px){
+  body{height:100vh;overflow:hidden}
+  .app{--stageH:min(calc((100vw - var(--cw) - var(--gap) - 2 * var(--side)) * 9 / 16), calc(100vh - var(--hdr) - var(--side)));
+       grid-template-columns:calc(var(--stageH) * 16 / 9) var(--cw);justify-content:center;align-items:start}
+  .stage{width:100%;height:var(--stageH);aspect-ratio:auto}
+  .controls{height:var(--stageH);overflow-y:auto}
+  .panel.ctrl{flex:1 1 0;min-height:0}
+}
+@media (max-width:899px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .top{height:auto;padding-block:10px;flex-wrap:wrap}
+}
+.recinfo-free{font:500 11px var(--f-mono)}
+
+/* ===== Settings dialog ===== */
+.modal{width:min(1120px,94vw);height:min(840px,90vh);padding:0;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.modal[open]{display:grid;grid-template-rows:auto minmax(0,1fr)}
+.modal::backdrop{background:rgba(5,8,12,.55)}
+.modal-head{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.modal-head h2{font:600 18px var(--f-display);margin:0}
+.modal-head .iconbtn{margin-left:auto;width:34px;height:32px}
+.modal-body{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:0}
+.side{display:flex;flex-direction:column;gap:2px;padding:10px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto}
+.side button{display:flex;align-items:center;gap:10px;border:0;background:transparent;padding:9px 10px;border-radius:6px;cursor:pointer;font:500 14.5px var(--f-body);color:var(--muted);text-align:left}
+.side button .ic{width:18px;height:18px}
+.side button:hover{color:var(--fg);background:var(--panel-2)}
+.side button[aria-selected="true"]{background:var(--accent-soft);color:var(--fg)}
+.side button[aria-selected="true"] .ic{color:var(--accent)}
+.panes{overflow-y:auto;padding:16px}
+.pane{display:none;flex-direction:column;gap:16px}
+.pane.on{display:flex}
+@media (max-width:700px){
+  .modal{width:100vw;height:100vh;max-width:none;max-height:none;border-radius:0}
+  .modal-body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .side{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line)}
+  .side button{white-space:nowrap}
+}
+/* compact controls column */
+.controls .frow{gap:5px}
+.controls .segi button,.controls .btn.ib{padding:5px 8px;font-size:13px;gap:5px}
+.controls .segi button .ic,.controls .btn.ib .ic{width:15px;height:15px}
+.controls .sharp{margin-top:6px}
+.controls .stps{margin-top:6px}
+.controls .panel>h2{margin-bottom:6px}
+.controls .pos{padding:5px 8px}
+.controls .ibtn{padding:6px 2px 5px}
+.sep{border:0;border-top:1px solid var(--line);margin:8px -10px}
+.controls.tight .rockcol>span{display:none}
+.posw{display:flex;min-width:0}
+.posw .pos{flex:1;min-width:0;border-radius:6px 0 0 6px}
+.pset{flex:none;width:26px;display:grid;place-items:center;padding:0;border:1px solid var(--line);border-left:0;border-radius:0 6px 6px 0;background:var(--panel-2);color:var(--muted);cursor:pointer}
+.pset .ic{width:14px;height:14px}
+.pset:hover:not(:disabled){color:var(--accent);border-color:var(--accent)}
+.pset:disabled{opacity:.4;cursor:not-allowed}
+.pset.saved{background:var(--ok);border-color:var(--ok);color:#fff}
+.pset{width:22px}
+@media (min-width:900px) and (max-width:1679px){.controls .pos b{display:none}}
+.controls .pos .pn{font-size:13px}
+.ctrlrow{justify-content:center;gap:clamp(10px,4%,28px)}
+/* preset tile + save button form one unit: the outline belongs to the wrapper and runs
+   uninterrupted; the seam between both parts is an inset line that never touches it */
+.posw{border:1px solid var(--line);border-radius:6px;background:var(--panel-2);overflow:hidden}
+.posw .pos,.posw .pset{border:0;border-radius:0;background:transparent}
+.posw .pset{position:relative}
+.posw .pset::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:1px;background:var(--line)}
+.posw:has(:enabled):hover,.posw:has(.pos.flash){border-color:var(--accent)}
+.posw .pos.flash{background:var(--accent-soft)}
+.posw .pset:hover:not(:disabled){background:var(--accent-soft);color:var(--accent)}
+.posw .pset.saved{background:var(--ok);color:#fff}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>PTZ Desk</h1>
+  <div class="status"><span class="dot" id="statusDot"></span><span id="statusText">Checking connection …</span></div>
+  <button class="iconbtn gear" id="openSettings" type="button" title="Settings and recordings" aria-label="Open settings" aria-haspopup="dialog"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
+</header>
+<div class="banner" id="envBanner" hidden></div>
+
+<main class="app">
+  <!-- ======================================================= Live -->
+  <div class="col stagecol">
+    <div class="stage" id="stage">
+      <video id="video" playsinline muted autoplay></video>
+      <div class="overlay" id="overlay" data-mode="none"></div>
+      <div class="aim" id="aim" hidden></div>
+      <div class="hud" id="hud" hidden>
+        <div class="hud-tl"><span class="chip rec" id="recPill" hidden>REC 00:00</span><span class="chip" id="loupeChip" hidden>Loupe 3×</span><span class="chip clip" id="clipChip" hidden title="Share of the image that clips to pure white">Overexposed</span></div>
+      </div>
+      <div class="toast" id="lastMsg" role="status" hidden></div>
+      <div class="empty" id="empty">
+        <div>
+          <h2 id="emptyTitle">No image yet</h2>
+          <p id="emptyText">The image comes through the PTZ Desk server on this computer.</p>
+          <button class="btn primary" id="emptyStart" type="button">Start video</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="col controls">
+    <section class="panel ctrl">
+      <div class="ctrlrow">
+        <div class="rockcol">
+          <div class="joy" id="joy" role="group" aria-label="Joystick: drag to pan and tilt, release to stop smoothly">
+            <div class="joy-knob" id="joyKnob"></div>
+          </div>
+          <span>Pan · Tilt</span>
+        </div>
+        <div class="rocks">
+          <div class="rockcol">
+            <div class="rock" id="zrock" role="group" aria-label="Zoom rocker: up for tele, down for wide">
+              <span class="zr-lbl zr-top">Tele</span><span class="zr-lbl zr-bot">Wide</span>
+              <div class="zr-knob" id="zKnob"></div>
+            </div>
+            <span>Zoom</span>
+          </div>
+          <div class="rockcol">
+            <div class="rock" id="frock" role="group" aria-label="Focus rocker: up for far, down for near. Switches to locked focus.">
+              <span class="zr-lbl zr-top" title="Far"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg></span><span class="zr-lbl zr-bot" title="Near"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5a3 3 0 1 1 3 3m-3-3a3 3 0 1 0-3 3m3-3v1M9 8a3 3 0 1 0 3 3M9 8h1m5 0a3 3 0 1 1-3 3m3-3h-1m-2 3v-1"/><circle cx="12" cy="8" r="2"/><path d="M12 10v12"/><path d="M12 22c4.2 0 7-1.667 7-5-4.2 0-7 1.667-7 5Z"/><path d="M12 22c-4.2 0-7-1.667-7-5 4.2 0 7 1.667 7 5Z"/></svg></span>
+              <div class="zr-knob" id="fKnob"></div>
+            </div>
+            <span>Focus</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel imgpanel">
+      <div id="focusBox">
+      <div class="frow">
+          <div class="segi" role="group" aria-label="Focus mode">
+            <button type="button" id="fAuto" aria-pressed="false" title="Autofocus – follows the subject"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>AF</button>
+            <button type="button" id="fMan" aria-pressed="false" title="Locked – focus stays where it is"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Lock</button>
+          </div>
+          <button class="btn ib" id="fOnce" type="button" title="Autofocus briefly, then lock"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="1"/><path d="M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0"/></svg>One-push</button>
+          <button class="btn ib" id="loupe" type="button" aria-pressed="false" title="Image centre magnified 3× (L)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>Loupe</button>
+        </div>
+        <div class="sharp" title="Sharpness in the image centre. Pull focus until the bar reaches the peak mark.">
+          <span class="lbl">Sharpness</span><div class="sh-track"><div id="shFill"></div><div id="shPeak"></div></div><output id="shVal">–</output>
+        </div>
+      </div>
+      <hr class="sep">
+      <div id="expoPanel">
+      <div class="frow">
+        <div class="segi" role="group" aria-label="Exposure mode">
+          <button type="button" data-m="auto" aria-pressed="false" title="The camera controls everything"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>Auto</button>
+          <button type="button" data-m="iris" aria-pressed="false" title="Iris fixed, the camera controls shutter and gain"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m14.31 8 5.74 9.94"/><path d="M9.69 8h11.48"/><path d="m7.38 12 5.74-9.94"/><path d="M9.69 16 3.95 6.06"/><path d="M14.31 16H2.83"/><path d="m16.62 12-5.74 9.94"/></svg>Iris</button>
+          <button type="button" data-m="manual" aria-pressed="false" title="Everything by hand"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>Manual</button>
+        </div>
+        <button class="btn ib" id="irisOpen" type="button" title="Open the iris fully"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m14.31 8 5.74 9.94"/><path d="M9.69 8h11.48"/><path d="m7.38 12 5.74-9.94"/><path d="M9.69 16 3.95 6.06"/><path d="M14.31 16H2.83"/><path d="m16.62 12-5.74 9.94"/></svg>Open</button>
+      </div>
+      <div class="stps">
+        <div class="stp" data-k="iris"><span class="stp-l">Iris</span><button class="iconbtn" type="button" data-d="-1" aria-label="Iris down"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button><output>–</output><button class="iconbtn" type="button" data-d="1" aria-label="Iris up"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button></div>
+        <div class="stp" data-k="expcomp"><span class="stp-l">Exp. comp.</span><button class="iconbtn" type="button" data-d="-1" aria-label="Exp. comp. down"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button><output>–</output><button class="iconbtn" type="button" data-d="1" aria-label="Exp. comp. up"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button></div>
+        <div class="stp" data-k="shutter"><span class="stp-l">Shutter</span><button class="iconbtn" type="button" data-d="-1" aria-label="Shutter down"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button><output>–</output><button class="iconbtn" type="button" data-d="1" aria-label="Shutter up"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button></div>
+        <div class="stp" data-k="gain"><span class="stp-l">Gain</span><button class="iconbtn" type="button" data-d="-1" aria-label="Gain down"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button><output>–</output><button class="iconbtn" type="button" data-d="1" aria-label="Gain up"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button></div>
+      </div>
+      <p class="note" id="expoNote" hidden></p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="actgrid">
+        <button class="ibtn rec" id="rec" type="button" aria-pressed="false" disabled title="Start recording"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/></svg><span>Record</span></button>
+        <button class="ibtn" id="snap" type="button" disabled title="Save a still image"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg><span>Still</span></button>
+        <button class="ibtn" id="homeBtn" type="button" disabled title="Go to home (H)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span>Home</span></button>
+        <button class="ibtn" id="ovl" type="button" aria-pressed="false" title="Guides"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg><span>Guides</span></button>
+        <button class="ibtn" id="rot" type="button" aria-pressed="false" title="Rotate image 180°"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg><span>180°</span></button>
+        <button class="ibtn" id="fs" type="button" title="Full screen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg><span>Full</span></button>
+        <button class="ibtn" id="recDir" type="button" disabled title="Open the recording folder"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg><span>Folder</span></button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Presets <small id="presetInfo"></small><button class="iconbtn" id="pEdit" type="button" aria-pressed="false" title="Name and save presets" aria-label="Edit presets"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button></h2>
+      <div class="presets" id="presets"></div>
+    </section>
+  </aside>
+
+</main>
+
+<dialog class="modal" id="settings" aria-labelledby="settingsTitle">
+  <div class="modal-head">
+    <h2 id="settingsTitle">Settings</h2>
+    <button class="iconbtn" id="closeSettings" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+  </div>
+  <div class="modal-body">
+    <nav class="side" role="tablist" aria-orientation="vertical" aria-label="Settings sections">
+      <button type="button" role="tab" data-tab="camera" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-1.708.134l-2.124-2.97"/><path d="M17.106 9.053a1 1 0 0 1 .447 1.341l-3.106 6.211a1 1 0 0 1-1.342.447L3.61 12.3a2.92 2.92 0 0 1-1.3-3.91L3.69 5.6a2.92 2.92 0 0 1 3.92-1.3z"/><path d="M2 19h3.76a2 2 0 0 0 1.8-1.1L9 15"/><path d="M2 21v-4"/><path d="M7 9h.01"/></svg>Camera</button>
+      <button type="button" role="tab" data-tab="audio" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>Audio</button>
+      <button type="button" role="tab" data-tab="controls" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg>Controls</button>
+      <button type="button" role="tab" data-tab="motion" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><path d="M5 17A12 12 0 0 1 17 5"/></svg>Motion</button>
+      <button type="button" role="tab" data-tab="presets" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>Presets</button>
+      <button type="button" role="tab" data-tab="recordings" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>Recordings</button>
+      <button type="button" role="tab" data-tab="calibration" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>Calibration</button>
+      <button type="button" role="tab" data-tab="diagnostics" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>Diagnostics</button>
+    </nav>
+    <div class="panes">
+      <div class="pane" data-pane="camera" role="tabpanel">
+      <section class="panel">
+        <h2>Connection</h2>
+        <div class="stack">
+          <dl class="conn">
+            <dt><span class="dot" id="dCam"></span>Camera</dt><dd id="vCam">–</dd>
+            <dt><span class="dot" id="dPtz"></span>Control</dt><dd id="vPtz">–</dd>
+            <dt><span class="dot" id="dVid"></span>Video</dt><dd id="vVid">–</dd>
+            <dt><span class="dot" id="dAi"></span>Tracking</dt><dd id="vAi">–</dd>
+          </dl>
+          <div class="btns" id="aiBtns" hidden>
+            <button class="btn small" id="aiToggle" type="button">Turn tracking off</button>
+            <span class="note" id="aiExtra"></span>
+          </div>
+          <div class="field">
+            <label for="stream">Live stream</label>
+            <select id="stream"><option value="main">Main stream</option></select>
+          </div>
+          <div class="btns">
+            <button class="btn primary" id="vStart" type="button">Start video</button>
+            <button class="btn" id="vStop" type="button" disabled>Stop video</button>
+            <button class="btn" id="reconnect" type="button">Reconnect camera</button>
+          </div>
+          <p class="note" id="connNote" hidden></p>
+          <p class="note"><a id="webUi" href="#" target="_blank" rel="noopener">Camera web interface</a> for picture settings, tracking and network.</p>
+        </div>
+      </section>
+      </div>
+      <div class="pane" data-pane="audio" role="tabpanel">
+      <section class="panel">
+        <h2>Audio</h2>
+        <div class="stack">
+          <p class="note">The camera has no microphone, only a line input (switch it on in the camera web interface). Alternatively, use an audio input of this computer – e.g. a USB audio interface: the server adds it to the video through go2rtc and ffmpeg, so it is part of the live view and of every recording.</p>
+          <div class="field">
+            <label for="auSrc">Audio source</label>
+            <select id="auSrc"><option value="camera">Camera stream (line input)</option></select>
+          </div>
+          <div class="btns">
+            <button class="btn small ib" id="auRefresh" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>Search devices again</button>
+            <span class="note" id="auInfo"></span>
+          </div>
+          <label class="opts"><input type="checkbox" id="auListen"> Play the audio in the live view (this computer's speakers)</label>
+          <p class="note">Changing the source restarts the video service for a moment; it is not possible while recording. Audio from a device on this computer needs ffmpeg (same as stabilization). It can be slightly ahead of the camera image, which has a few hundred milliseconds of delay.</p>
+        </div>
+      </section>
+      </div>
+      <div class="pane" data-pane="controls" role="tabpanel">
+      <section class="panel">
+        <h2>Keyboard &amp; mouse</h2>
+        <div class="stack">
+          <div class="field">
+            <div class="ctl-head"><label for="speed">Arrow key speed</label><output id="speedOut" class="lbl" for="speed">medium</output></div>
+            <input type="range" id="speed" min="1" max="5" step="1" value="3">
+          </div>
+          <div class="field">
+            <div class="ctl-head"><label for="zspeed">+/− zoom speed</label><output id="zspeedOut" class="lbl" for="zspeed">medium</output></div>
+            <input type="range" id="zspeed" min="1" max="5" step="1" value="3">
+          </div>
+          <div class="field">
+            <label for="zmode">+/− zoom keys</label>
+            <select id="zmode">
+              <option value="cont">Zoom while held</option>
+              <option value="step">In steps (press = one step, hold = repeat)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="wheelMode">Mouse wheel in the Live view</label>
+            <select id="wheelMode">
+              <option value="off">off</option>
+              <option value="fine">fine – every notch a small nudge</option>
+              <option value="medium" selected>medium</option>
+              <option value="coarse">coarse – fast pans</option>
+            </select>
+          </div>
+          <div class="opts">
+            <label><input type="checkbox" id="invPan"> Invert pan</label>
+            <label><input type="checkbox" id="invTilt"> Invert tilt</label>
+          </div>
+          <h3>Shortcuts</h3>
+          <dl class="keys">
+            <dt><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></dt><dd>pan and tilt (combinable), release stops smoothly</dd>
+            <dt><kbd>+</kbd><kbd>−</kbd></dt><dd>zoom</dd>
+            <dt><kbd>N</kbd> / <kbd>F</kbd></dt><dd>focus near / far (with <kbd>Shift</kbd> faster)</dd>
+            <dt><kbd>L</kbd></dt><dd>loupe</dd>
+            <dt><kbd>H</kbd></dt><dd>home</dd>
+            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>recall preset</dd>
+            <dt>Double-click</dt><dd>bring that spot of the image to the centre</dd>
+            <dt>Wheel</dt><dd>up/down tilts, sideways (or <kbd>Shift</kbd> + wheel) pans, <kbd>Ctrl</kbd> + wheel zooms</dd>
+            <dt>Wheel held</dt><dd>drag to use it like the joystick</dd>
+          </dl>
+        </div>
+      </section>
+      </div>
+      <div class="pane" data-pane="motion" role="tabpanel">
+      <section class="panel" id="curvePanel">
+        <h2>Motion curves <small id="curveSave"></small></h2>
+        <div class="stack">
+          <canvas class="cv" id="curveCv" aria-label="Preview: speed over time while accelerating and braking"></canvas>
+          <div class="legend"><span><i style="background:var(--c-pan)"></i>Pan</span><span><i style="background:var(--c-tilt)"></i>Tilt</span><span><i style="background:var(--c-zoom)"></i>Zoom</span><span>Preview: full deflection, then release</span></div>
+          <div class="cgrid" id="cgrid"></div>
+          <div class="cfoot">
+            <div class="field">
+              <div class="ctl-head"><label for="kExpo">Joystick sensitivity</label><output id="kExpoOut" for="kExpo"></output></div>
+              <input type="range" id="kExpo" min="0" max="1" step="0.05">
+            </div>
+            <div class="field">
+              <label for="kRate">Send rate to the camera</label>
+              <select id="kRate"><option value="10">10 per second</option><option value="15">15 per second</option><option value="20">20 per second</option><option value="25">25 per second</option><option value="30">30 per second</option></select>
+            </div>
+            <div class="field">
+              <label for="kPath">Pan/tilt via</label>
+              <select id="kPath"><option value="onvif">ONVIF – both axes together</option><option value="web">Web API – one axis at a time</option></select>
+            </div>
+          </div>
+          <label class="opts"><input type="checkbox" id="kLevels"> Drive with the measured camera speed levels (sends only on level changes)</label>
+          <div class="meters" aria-label="Current speed per axis">
+            <div class="meter"><span class="m-lbl">Pan</span><div class="m-track"><div class="m-fill" id="mPan" style="background:var(--c-pan)"></div></div><span class="m-val" id="vPan">0</span></div>
+            <div class="meter"><span class="m-lbl">Tilt</span><div class="m-track"><div class="m-fill" id="mTilt" style="background:var(--c-tilt)"></div></div><span class="m-val" id="vTilt">0</span></div>
+            <div class="meter"><span class="m-lbl">Zoom</span><div class="m-track"><div class="m-fill" id="mZoom" style="background:var(--c-zoom)"></div></div><span class="m-val" id="vZoom">0</span></div>
+          </div>
+          <div class="btns">
+            <button class="btn small" id="kTest" type="button">Test a diagonal</button>
+            <button class="btn small" id="kDefaults" type="button">Defaults</button>
+          </div>
+          <p class="note">Accelerate/brake: time to full speed and to standstill. S-shape 0 % is a straight ramp, 100 % a fully smooth curve. Set the camera's own acceleration in its web interface as short as possible, otherwise both curves add up.</p>
+        </div>
+      </section>
+      </div>
+      <div class="pane" data-pane="presets" role="tabpanel">
+      <section class="panel">
+        <h2>Presets &amp; moves</h2>
+        <div class="stack">
+          <p class="note">Straight line: the server drives stored presets itself over VISCA, with a smooth S-curve and both axes together – the way a camera operator would pan. On its own the camera finishes tilt too early (bent path). Presets learn their VISCA coordinates when they are saved or first recalled.</p>
+          <div class="kv3">
+            <label class="field"><span>Recall</span>
+              <select id="gMode"><option value="straight">Straight line (server)</option><option value="camera">Camera's own move</option></select></label>
+            <label class="field"><span>Top speed <output id="gMaxV"></output></span><input type="range" id="gMax" min="1" max="24" step="1"></label>
+            <label class="field"><span>Minimum duration <output id="gMinV"></output></span><input type="range" id="gMin" min="0.5" max="8" step="0.5"></label>
+          </div>
+          <div class="btns"><button class="btn" id="gCal" type="button">Calibrate speeds</button><span class="note" id="gInfo"></span></div>
+          <div class="btns">
+            <button class="btn small" id="setHome" type="button" disabled>Save current view as home</button>
+            <button class="btn small" id="reloadPresets" type="button" disabled>Reload presets</button>
+          </div>
+          <div class="field" id="extraWrap" hidden>
+            <span class="lbl">Other presets stored in the camera</span>
+            <div class="extra" id="extra"></div>
+          </div>
+          <p class="note">Presets are stored in the camera and also work with its remote and other software. Names and VISCA targets live in presets.json. To name or save a preset, use the pencil next to the presets.</p>
+        </div>
+      </section>
+      </div>
+      <div class="pane" data-pane="recordings" role="tabpanel">
+    <section class="panel">
+      <h2>Recordings <small id="pfFolder"></small></h2>
+      <div class="stack">
+        <p class="note" id="ffInfo">Checking ffmpeg …</p>
+        <div class="post-head">
+          <div class="field">
+            <label for="glStrength">Stabilization</label>
+            <select id="glStrength">
+              <option value="light">Light – only level jolts, 4 % crop</option>
+              <option value="medium" selected>Medium – also soft starts, 6 % crop</option>
+              <option value="strong">Strong – very smooth, 10 % crop</option>
+            </select>
+          </div>
+          <div class="btns">
+            <button class="btn small" id="pfReload" type="button">Refresh list</button>
+            <button class="btn small" id="ffCheck" type="button">Check again</button>
+            <button class="btn small primary" id="glDeps" type="button" hidden>Install numpy and OpenCV</button>
+          </div>
+        </div>
+        <div class="calbar" aria-hidden="true"><div id="glFill"></div></div>
+        <div class="btns"><span class="note" id="glInfo"></span><button class="btn small" id="glStop" type="button" hidden>Cancel</button></div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Recording</th><th>Length</th><th>Size</th><th>Audio</th><th></th></tr></thead>
+            <tbody id="pfBody"><tr><td colspan="5">Loading …</td></tr></tbody>
+          </table>
+        </div>
+        <p class="note">Stabilizing measures the camera motion frame by frame, computes a calm path from it and shifts the slightly cropped image along. The jolts at the camera's speed levels and hard starts become smooth transitions; intended pans are kept. The result is saved as <code>…_smooth.mp4</code> next to the original, which stays untouched. Processing takes roughly one to two times the length of the recording.</p>
+      </div>
+    </section>
+      </div>
+      <div class="pane" data-pane="calibration" role="tabpanel">
+      <section class="panel">
+        <h2>Calibration</h2>
+        <div class="stack">
+          <p class="note"><b>Measure motion:</b> for about 70 seconds the camera makes short pans, tilts and zooms on its own – over both control paths and at different speeds – while the server records. The recording and a log end up in the recording folder. Point the camera at something with texture first (not a blank wall).</p>
+          <div class="calbar" aria-hidden="true"><div id="calFill"></div></div>
+          <div class="btns"><button class="btn" id="calBtn" type="button">Measure motion</button><span class="note" id="calInfo"></span></div>
+          <p class="note"><b>VISCA check:</b> queries the position over all VISCA paths and moves the camera in small steps for about 20 seconds. Result: visca_check.json.</p>
+          <div class="btns"><button class="btn" id="viscaBtn" type="button">Check VISCA</button><span class="note" id="viscaInfo"></span></div>
+        </div>
+      </section>
+      </div>
+      <div class="pane" data-pane="diagnostics" role="tabpanel">
+      <section class="panel">
+        <h2>Diagnostics</h2>
+        <div class="stack">
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Item</th><th>Value</th></tr></thead>
+              <tbody id="diagBody"><tr><td colspan="2">Filled in after connecting.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="btns">
+            <button class="btn" id="copyReport" type="button">Copy report</button>
+            <button class="btn" id="onvifRaw" type="button">Fetch raw ONVIF data</button>
+          </div>
+          <details>
+            <summary>Show raw data</summary>
+            <textarea id="report" readonly aria-label="Report as JSON"></textarea>
+          </details>
+          <div class="field">
+            <span class="lbl">Log</span>
+            <ul class="log" id="log" aria-live="polite"></ul>
+          </div>
+        </div>
+      </section>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+/* ---------- Icons (Lucide, ISC licence) ---------- */
+const ICONS = {"circle": "<circle cx=\"12\" cy=\"12\" r=\"10\"/>", "square": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/>", "save": "<path d=\"M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z\"/><path d=\"M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7\"/><path d=\"M7 3v4a1 1 0 0 0 1 1h7\"/>", "check": "<path d=\"M20 6 9 17l-5-5\"/>", "pencil": "<path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\"/><path d=\"m15 5 4 4\"/>", "minus": "<path d=\"M5 12h14\"/>", "plus": "<path d=\"M5 12h14\"/><path d=\"M12 5v14\"/>"};
+function icon(n){ return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ''}</svg>`; }
+
+(() => {
+'use strict';
+const $ = (s) => document.querySelector(s);
+const E = {
+  video:$('#video'), stage:$('#stage'), overlay:$('#overlay'), hud:$('#hud'),
+  recPill:$('#recPill'), recDir:$('#recDir'), empty:$('#empty'), emptyTitle:$('#emptyTitle'), emptyText:$('#emptyText'), emptyStart:$('#emptyStart'),
+  statusDot:$('#statusDot'), statusText:$('#statusText'), banner:$('#envBanner'),
+  dCam:$('#dCam'), vCam:$('#vCam'), dPtz:$('#dPtz'), vPtz:$('#vPtz'), dVid:$('#dVid'), vVid:$('#vVid'),
+  dlg:$('#settings'), openSettings:$('#openSettings'), closeSettings:$('#closeSettings'), homeBtn:$('#homeBtn'), lastMsg:$('#lastMsg'),
+  pfFolder:$('#pfFolder'), ffInfo:$('#ffInfo'), glStrength:$('#glStrength'), pfReload:$('#pfReload'),
+  ffCheck:$('#ffCheck'), glDeps:$('#glDeps'), glFill:$('#glFill'), glInfo:$('#glInfo'), glStop:$('#glStop'), pfBody:$('#pfBody'), kLevels:$('#kLevels'),
+  viscaBtn:$('#viscaBtn'), viscaInfo:$('#viscaInfo'),
+  calBtn:$('#calBtn'), calInfo:$('#calInfo'), calFill:$('#calFill'),
+  joy:$('#joy'), joyKnob:$('#joyKnob'), zrock:$('#zrock'), zKnob:$('#zKnob'),
+  kExpo:$('#kExpo'), kExpoOut:$('#kExpoOut'), kRate:$('#kRate'), kPath:$('#kPath'), kTest:$('#kTest'), kDefaults:$('#kDefaults'), curveSave:$('#curveSave'),
+  fAuto:$('#fAuto'), fMan:$('#fMan'), fOnce:$('#fOnce'), loupe:$('#loupe'), loupeChip:$('#loupeChip'), frock:$('#frock'), fKnob:$('#fKnob'),
+  shFill:$('#shFill'), shPeak:$('#shPeak'), shVal:$('#shVal'), pEdit:$('#pEdit'),
+  gMode:$('#gMode'), gMax:$('#gMax'), gMaxV:$('#gMaxV'), gMin:$('#gMin'), gMinV:$('#gMinV'), gCal:$('#gCal'), gInfo:$('#gInfo'),
+  auSrc:$('#auSrc'), auRefresh:$('#auRefresh'), auInfo:$('#auInfo'), auListen:$('#auListen'),
+  aim:$('#aim'), wheelMode:$('#wheelMode'), expoPanel:$('#expoPanel'), irisOpen:$('#irisOpen'), expoNote:$('#expoNote'), clipChip:$('#clipChip'),
+  dAi:$('#dAi'), vAi:$('#vAi'), aiBtns:$('#aiBtns'), aiToggle:$('#aiToggle'), aiExtra:$('#aiExtra'),
+  stream:$('#stream'), vStart:$('#vStart'), vStop:$('#vStop'), reconnect:$('#reconnect'), connNote:$('#connNote'), webUi:$('#webUi'),
+  speed:$('#speed'), speedOut:$('#speedOut'), zspeed:$('#zspeed'), zspeedOut:$('#zspeedOut'), zmode:$('#zmode'),
+  onvifRaw:$('#onvifRaw'), invPan:$('#invPan'), invTilt:$('#invTilt'),
+  presets:$('#presets'), presetInfo:$('#presetInfo'), extraWrap:$('#extraWrap'), extra:$('#extra'), setHome:$('#setHome'), reloadPresets:$('#reloadPresets'),
+  snap:$('#snap'), rec:$('#rec'), ovl:$('#ovl'), rot:$('#rot'), fs:$('#fs'),
+  diagBody:$('#diagBody'), copyReport:$('#copyReport'), report:$('#report'), log:$('#log')
+};
+
+const SPEED = [[0.15, 'very slow'], [0.3, 'slow'], [0.5, 'medium'], [0.75, 'fast'], [1, 'maximum']];
+const OVL = [['none', 'off'], ['cross', 'Crosshair'], ['thirds', 'Thirds']];
+const SLOTS = 9;
+const S = {status: null, ptzOk: false, pc: null, ms: null, stats: {}, statsTimer: null, presets: [],
+           rot: false, ovl: 0, moving: null};
+
+/* ---------- helpers ---------- */
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+function stamp(){ const d = new Date(), p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}`; }
+function saveBlob(blob, name){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+let lastT = null;
+function showLast(msg, kind){
+  if (!E.lastMsg) return;
+  E.lastMsg.textContent = msg; E.lastMsg.className = 'toast ' + kind; E.lastMsg.hidden = false;
+  clearTimeout(lastT); lastT = setTimeout(() => { E.lastMsg.hidden = true; }, 8000);
+}
+function log(msg, kind = 'info'){
+  if (kind === 'err' || kind === 'warn') showLast(msg, kind);
+  const li = document.createElement('li'); li.className = kind;
+  const t = document.createElement('time'); t.textContent = new Date().toLocaleTimeString();
+  const s = document.createElement('span'); s.textContent = msg;
+  li.append(t, s); E.log.prepend(li);
+  while (E.log.children.length > 100) E.log.lastChild.remove();
+}
+function setStatus(kind, text){ E.statusDot.dataset.s = kind; E.statusText.textContent = text; }
+function banner(text, err){ E.banner.textContent = text; E.banner.classList.toggle('err', !!err); E.banner.hidden = !text; }
+function note(text, kind){ E.connNote.textContent = text || ''; E.connNote.className = 'note' + (kind ? ' ' + kind : ''); E.connNote.hidden = !text; }
+const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+const settingsOpen = () => E.dlg.open;
+
+async function api(path, body){
+  const opt = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PTZ-Desk': '1'}, body: JSON.stringify(body)};
+  let r;
+  try { r = await fetch(path, opt); }
+  catch { throw new Error('PTZ Desk server not reachable. Is start.bat still running?'); }
+  let data = null; try { data = await r.json(); } catch {}
+  if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
+  return data;
+}
+/* PTZ commands strictly one after another, so a "stop" never overtakes a "move" */
+let chain = Promise.resolve();
+function ptz(path, body){
+  const p = chain.then(() => api(path, body));
+  chain = p.catch(() => {});
+  return p.catch(e => { log(e.message, 'err'); throw e; });
+}
+
+/* ---------- status ---------- */
+async function loadStatus(){
+  setStatus('busy', 'Checking connection …');
+  try {
+    S.status = await api('/api/status');
+  } catch (e) {
+    S.status = null; S.ptzOk = false; renderConn(e.message); return;
+  }
+  S.ptzOk = ptzAvailable(S.status);
+  renderConn();
+  if (S.ptzOk) loadPresets();
+  startAiPoll();
+  pollRec();
+  loadCurves();
+  pollCal();
+  loadFocus();
+  loadGlide();
+  loadExpo();
+}
+
+/* ---------- camera auto-tracking (display + switch) ---------- */
+function aiText(a){
+  const on = a.ai_enable === '1';
+  const parts = [on ? 'on' : 'off'];
+  if (on){
+    parts.push(`mode ${a.ai_mode ?? '?'}`);
+    if (a.ai_auto_zoom != null) parts.push(`auto zoom ${a.ai_auto_zoom === '0' ? 'off' : 'on'}`);
+    if (a.ai_auto_tilt != null) parts.push(`auto tilt ${a.ai_auto_tilt === '0' ? 'off' : 'on'}`);
+  }
+  return parts.join(' · ');
+}
+function renderAi(){
+  const a = S.ai;
+  E.aiBtns.hidden = !a;
+  if (!a){ E.dAi.dataset.s = ''; E.vAi.textContent = S.aiErr ? 'not readable' : '–'; return; }
+  const on = a.ai_enable === '1';
+  E.dAi.dataset.s = on ? 'busy' : 'live';
+  E.vAi.textContent = aiText(a);
+  E.aiToggle.textContent = on ? 'Turn tracking off' : 'Turn tracking on';
+  E.aiExtra.textContent = (a.ai_on != null && a.ai_on !== a.ai_enable) ? `(ai_on = ${a.ai_on})` : '';
+}
+async function pollAi(){
+  if (document.hidden || !S.status || !S.status.control || !S.status.control.web.connected) return;
+  try {
+    const a = (await api('/api/ai')).ai || {};
+    if (S.ai && S.ai.ai_enable !== a.ai_enable) log(`Tracking was switched ${a.ai_enable === '1' ? 'ON' : 'off'} at the camera (not from this desk).`, a.ai_enable === '1' ? 'warn' : 'info');
+    S.ai = a; S.aiErr = null;
+  } catch (e) { if (!S.aiErr) log(e.message, 'warn'); S.aiErr = e.message; S.ai = null; }
+  renderAi();
+}
+function startAiPoll(){ clearInterval(S.aiTimer); pollAi(); S.aiTimer = setInterval(pollAi, 4000); }
+E.aiToggle.addEventListener('click', async () => {
+  if (!S.ai) return;
+  const want = S.ai.ai_enable === '1' ? '0' : '1';
+  E.aiToggle.disabled = true;
+  try { S.ai = (await api('/api/ai', {cmd: 'ai_enable', value: want})).ai || S.ai; log(`Tracking switched ${want === '1' ? 'on' : 'off'}.`, 'ok'); }
+  catch (e) { log(e.message, 'err'); }
+  E.aiToggle.disabled = false; renderAi();
+});
+function ptzAvailable(st){
+  const o = st.onvif, c = st.control || {kind: 'onvif'};
+  return c.kind === 'web' ? !!(c.web && c.web.connected) : !!(o.connected && o.profile && o.profile.ptz);
+}
+const videoOk = (st) => !!(st && /^running/.test(st.video.state));
+function renderConn(fatal){
+  const st = S.status;
+  E.dCam.dataset.s = E.dPtz.dataset.s = E.dVid.dataset.s = '';
+  if (!st){
+    E.vCam.textContent = E.vPtz.textContent = E.vVid.textContent = '–';
+    E.dCam.dataset.s = 'err'; setStatus('err', 'Server not reachable'); note(fatal, 'err'); renderPTZ(); renderDiag(); return;
+  }
+  const o = st.onvif, v = st.video, k = st.camera;
+  E.webUi.href = `http://${k.ip}/`;
+  E.webUi.textContent = `Camera web interface (${k.ip})`;
+  if (o.connected){
+    E.dCam.dataset.s = 'live';
+    E.vCam.textContent = [o.info.Manufacturer, o.info.Model].filter(Boolean).join(' ') || k.ip;
+    note('');
+  } else {
+    E.dCam.dataset.s = S.ptzOk ? 'live' : 'err'; E.vCam.textContent = `${k.ip}`;
+    let hint = o.error || 'No connection to the camera.';
+    if (!k.password_set) hint += ' No password is set in config.ini.';
+    if (!S.ptzOk) note(hint, 'err');
+  }
+  const c = st.control || {kind: 'onvif'};
+  E.dPtz.dataset.s = S.ptzOk ? 'live' : 'err';
+  if (c.kind === 'web') E.vPtz.textContent = S.ptzOk ? 'Camera web API' : `Web API: ${(c.web && c.web.error) || 'not connected'}`;
+  else E.vPtz.textContent = S.ptzOk ? `ONVIF · profile ${o.profile.name || o.profile.token}` : (o.connected ? 'profile without PTZ' : 'not connected');
+  if (!S.ptzOk && c.web && c.web.error && c.setting !== 'onvif') note(c.web.error, 'err');
+  const vidOk = videoOk(st);
+  E.dVid.dataset.s = vidOk ? 'live' : 'err';
+  E.vVid.textContent = v.state;
+  const cur = E.stream.value;
+  E.stream.textContent = '';
+  const labels = {main: 'Main stream (full resolution)', sub: 'Sub stream (lower resolution)'};
+  v.streams.forEach(s => E.stream.add(new Option(labels[s] || s, s)));
+  if (!v.streams.length) E.stream.add(new Option('No RTSP address in config.ini', ''));
+  const pref = store.get('stream', 'sub');
+  E.stream.value = v.streams.includes(cur) ? cur : (v.streams.includes(pref) ? pref : (v.streams[0] || ''));
+  E.vStart.disabled = E.emptyStart.disabled = !vidOk || !v.streams.length;
+  if (!vidOk){
+    E.emptyTitle.textContent = 'Video service is not running';
+    E.emptyText.textContent = /missing/.test(v.state) ? 'go2rtc is missing in the PTZ Desk folder. Put it there and restart start.bat.' : v.state;
+  } else if (!S.pc){
+    E.emptyTitle.textContent = 'No image yet'; E.emptyText.textContent = 'The image comes through the PTZ Desk server on this computer.';
+  }
+  if (S.ptzOk) setStatus(S.pc ? 'live' : 'busy', S.pc ? 'Live' : 'Ready');
+  else setStatus('err', o.connected ? 'No PTZ' : 'Camera not connected');
+  renderPTZ(); renderDiag();
+}
+
+/* ---------- video (WebRTC through go2rtc) ---------- */
+function waitIce(pc, ms){
+  return new Promise(res => {
+    if (pc.iceGatheringState === 'complete') return res();
+    const t = setTimeout(res, ms);
+    pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete'){ clearTimeout(t); res(); } });
+  });
+}
+async function startVideo(){
+  const src = E.stream.value; if (!src) return;
+  stopVideo(true);
+  store.set('stream', src);
+  setStatus('busy', 'Starting video …');
+  E.emptyTitle.textContent = 'Connecting …'; E.emptyText.textContent = 'One moment.';
+  const pc = new RTCPeerConnection({bundlePolicy: 'max-bundle'});
+  S.pc = pc;
+  pc.addTransceiver('video', {direction: 'recvonly'});
+  pc.addTransceiver('audio', {direction: 'recvonly'});
+  S.ms = new MediaStream();
+  pc.ontrack = (e) => { S.ms.addTrack(e.track); E.video.srcObject = S.ms; E.video.play().catch(() => {}); };
+  pc.onconnectionstatechange = () => {
+    if (S.pc !== pc) return;
+    const st = pc.connectionState;
+    if (st === 'connected'){ setStatus('live', 'Live'); E.empty.hidden = true; E.hud.hidden = false; E.snap.disabled = false; log(`Video running (${src}).`, 'ok'); startStats(); }
+    if (st === 'failed'){
+      log('Video connection failed. Most common cause: Windows Firewall blocks go2rtc. When go2rtc starts, choose "Allow access" for private networks.', 'err');
+      stopVideo(); setStatus('err', 'Video failed');
+    }
+    if (st === 'disconnected') log('Video connection interrupted …', 'warn');
+  };
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await waitIce(pc, 1500);
+    const ans = await api('/api/webrtc?src=' + encodeURIComponent(src), {type: 'offer', sdp: pc.localDescription.sdp});
+    const sdp = typeof ans === 'string' ? ans : ans.sdp;
+    await pc.setRemoteDescription({type: 'answer', sdp});
+    E.vStop.disabled = false;
+  } catch (e) {
+    let msg = e.message;
+    if (/codec/i.test(msg)) msg += ' – The camera probably sends H.265. Switch it to H.264 in its web interface under Video, or choose the sub stream.';
+    else if (/404|not found/i.test(msg)) msg += ' – Unknown stream. Check the RTSP addresses in config.ini.';
+    else if (/i\/o timeout|connection refused|dial tcp|EOF/i.test(msg)) msg += ' – go2rtc cannot reach the camera. Check the RTSP address in config.ini (Copy button in the camera web interface).';
+    log(msg, 'err'); stopVideo(); setStatus('err', 'Video failed');
+    E.emptyTitle.textContent = 'Video could not be started'; E.emptyText.textContent = msg;
+  }
+}
+function stopVideo(silent){
+  clearInterval(S.statsTimer); S.statsTimer = null;
+  if (S.pc){ try { S.pc.close(); } catch {} S.pc = null; }
+  if (S.ms){ S.ms.getTracks().forEach(t => t.stop()); S.ms = null; }
+  E.video.srcObject = null; E.hud.hidden = true; E.empty.hidden = false;
+  E.vStop.disabled = true; E.snap.disabled = true;
+  if (!silent){ E.emptyTitle.textContent = 'No image'; E.emptyText.textContent = 'Video stopped.'; }
+  S.stats = {};
+}
+function startStats(){
+  clearInterval(S.statsTimer);
+  const pc = S.pc;
+  const tick = async () => {
+    if (!pc || S.pc !== pc) return;
+    try {
+      const rep = await pc.getStats(); let v = null; const codecs = {};
+      rep.forEach(r => { if (r.type === 'inbound-rtp' && r.kind === 'video') v = r; if (r.type === 'codec') codecs[r.id] = r; });
+      if (v){
+        const c = codecs[v.codecId];
+        S.stats = {width: v.frameWidth, height: v.frameHeight, fps: v.framesPerSecond, codec: c ? c.mimeType.replace('video/', '') : '?',
+                   lost: v.packetsLost, jitter_ms: v.jitter != null ? Math.round(v.jitter * 1000) : null};
+      }
+    } catch {}
+    renderDiag();
+  };
+  tick(); S.statsTimer = setInterval(tick, 2000);
+}
+
+/* ---------- smooth motion: joystick, rockers, keys, wheel -> motion engine in the server ---------- */
+function vel(dx, dy, dz){
+  const s = SPEED[E.speed.value - 1][0], zs = SPEED[E.zspeed.value - 1][0];
+  return {x: dx * s * (E.invPan.checked ? -1 : 1), y: dy * s * (E.invTilt.checked ? -1 : 1), z: dz * zs};
+}
+const IN = {joy: {x: 0, y: 0}, zoom: 0, keys: {x: 0, y: 0, z: 0}, wheel: {x: 0, y: 0, z: 0}, mid: {x: 0, y: 0}};
+const DEAD = 0.06;
+let joyBusy = false, joyNext = null, joyAlive = null, meterTimer = null;
+const clamp1 = (v) => Math.max(-1, Math.min(1, v));
+function inputVec(){ return {x: clamp1(IN.joy.x + IN.keys.x + IN.wheel.x + IN.mid.x), y: clamp1(IN.joy.y + IN.keys.y + IN.wheel.y + IN.mid.y), z: clamp1(IN.zoom + IN.keys.z + IN.wheel.z)}; }
+function anyInput(){ const v = inputVec(); return !!(v.x || v.y || v.z); }
+function shape(m){ const k = S.curves ? S.curves.expo : 0.5; return (1 - k) * m + k * m * m * m; }
+/* camera speed levels (as in motion.py): image speed per level 1..24 */
+function levelTable(points){
+  const pts = (points || []).map(([a, b]) => [+a, +b]).filter(([a, b]) => a >= 1 && a <= 24 && b > 0).sort((p, q) => p[0] - q[0]);
+  if (pts.length < 2) return Array.from({length: 24}, (_, i) => i + 1);
+  const res = [];
+  for (let k = 1; k <= 24; k++){
+    const lo = pts.filter(p => p[0] <= k).pop() || pts[0], hi = pts.find(p => p[0] >= k) || pts[pts.length - 1];
+    res.push(hi[0] === lo[0] ? lo[1] : lo[1] + (hi[1] - lo[1]) * (k - lo[0]) / (hi[0] - lo[0]));
+  }
+  for (let i = 1; i < 24; i++) res[i] = Math.max(res[i], res[i - 1]);
+  return res;
+}
+function quantLevel(u, t){
+  const target = Math.abs(u) * t[23];
+  if (target < t[0] * 0.5) return 0;
+  let k = 0; for (let i = 1; i < 24; i++) if (Math.abs(t[i] - target) < Math.abs(t[k] - target)) k = i;
+  return (k + 1) * Math.sign(u);
+}
+// as quantize_pair in motion.py: the level pair that best matches direction and speed together
+function quantPair(u, w, tp, tt){
+  const kp0 = quantLevel(u, tp), kt0 = quantLevel(w, tt);
+  if (!kp0 && !kt0) return [0, 0];
+  const vx = u * tp[23], vy = w * tt[23], tgt = Math.hypot(vx, vy), ang = Math.atan2(vy, vx);
+  const sx = vx >= 0 ? 1 : -1, sy = vy >= 0 ? 1 : -1;
+  let best = null, bc = Infinity;
+  for (let dp = -3; dp <= 3; dp++) for (let dt = -3; dt <= 3; dt++){
+    const a = Math.abs(kp0) + dp, b = Math.abs(kt0) + dt;
+    if (a < 0 || b < 0 || a > 24 || b > 24 || (!a && !b)) continue;
+    const cx = a ? sx * tp[a - 1] : 0, cy = b ? sy * tt[b - 1] : 0, cv = Math.hypot(cx, cy);
+    let da = Math.abs(Math.atan2(cy, cx) - ang); da = Math.min(da, 2 * Math.PI - da);
+    const c = 6 * da * da + ((cv - tgt) / tgt) ** 2;
+    if (c < bc){ bc = c; best = [a * sx, b * sy]; }
+  }
+  return best;
+}
+let LT = null, LTsrc = null;
+function tables(){
+  const src = S.curves && S.curves.levels;
+  if (!LT || src !== LTsrc){ LTsrc = src; LT = {pan: levelTable(src && src.pan), tilt: levelTable(src && src.tilt)}; }
+  return LT;
+}
+// Deflection (circle, up = +y) -> axis fractions such that the image moves in the direction pointed at.
+// Pan is faster than tilt; without compensation a 45° deflection would run flatter than 45°.
+function stick(dx, dy, R, dead){
+  const nx = dx / R, ny = -dy / R, m = Math.hypot(nx, ny);
+  if (m < dead) return [0, 0];
+  const m2 = shape((Math.min(1, m) - dead) / (1 - dead)), c = nx / m, s = ny / m;
+  const t = tables(), vp = t.pan[23], vt = t.tilt[23];
+  const vmax = Math.min(Math.abs(c) > 1e-6 ? vp / Math.abs(c) : Infinity, Math.abs(s) > 1e-6 ? vt / Math.abs(s) : Infinity);
+  return [m2 * vmax * c / vp, m2 * vmax * s / vt];
+}
+function joyPush(){
+  if (!S.ptzOk) return;
+  const v = inputVec();
+  if (v.x || v.y || v.z){
+    if (!joyAlive) joyAlive = setInterval(() => { if (anyInput()) joySubmit('target', inputVec()); }, 250);
+    joySubmit('target', v);
+  } else {
+    clearInterval(joyAlive); joyAlive = null;
+    joySubmit('release');
+  }
+  startMeters();
+}
+function joySubmit(kind, v){ joyNext = {kind, v}; if (!joyBusy) joyFlush(); }
+async function joyFlush(){
+  joyBusy = true;
+  while (joyNext){
+    const {kind, v} = joyNext; joyNext = null;
+    try { showMotion(await api(kind === 'release' ? '/api/joy/release' : '/api/joy', kind === 'release' ? {} : v)); }
+    catch (e) { log(e.message, 'err'); }
+  }
+  joyBusy = false;
+}
+function showMotion(st){
+  if (!st || !st.v) return;
+  S.motion = st;
+  [['pan', 'mPan', 'vPan'], ['tilt', 'mTilt', 'vTilt'], ['zoom', 'mZoom', 'vZoom']].forEach(([k, f, t]) => {
+    const v = st.v[k] || 0, el = $('#' + f);
+    el.style.width = `${Math.abs(v) * 50}%`;
+    el.style.left = v < 0 ? `${50 - Math.abs(v) * 50}%` : '50%';
+    const lv = st.level ? st.level[k] : null;
+    $('#' + t).textContent = (lv != null) ? (lv === 0 ? 'stop' : `${lv > 0 ? '+' : '−'}${Math.abs(lv)} / 24`) : (v > 0 ? '+' : '') + Math.round(v * 100) + ' %';
+  });
+  if (st.error && st.error !== S.motionErr){ log(`Motion: ${st.error}`, 'err'); }
+  S.motionErr = st.error;
+}
+function startMeters(){
+  if (meterTimer) return;
+  meterTimer = setInterval(async () => {
+    try { showMotion(await api('/api/joy')); } catch {}
+    if (!anyInput() && S.motion && !S.motion.moving){ clearInterval(meterTimer); meterTimer = null; }
+  }, 90);
+}
+function dragControl(el, knob, onMove, onEnd){
+  let pid = null;
+  const move = (e) => {
+    const r = el.getBoundingClientRect();
+    onMove(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2), r);
+  };
+  el.addEventListener('pointerdown', (e) => {
+    if (!S.ptzOk || e.button !== 0) return;
+    e.preventDefault(); pid = e.pointerId; try { el.setPointerCapture(pid); } catch {}
+    el.classList.remove('spring'); el.classList.add('grab'); move(e);
+  });
+  el.addEventListener('pointermove', (e) => { if (e.pointerId === pid) move(e); });
+  const end = (e) => { if (e.pointerId !== pid) return; pid = null; el.classList.add('spring'); el.classList.remove('grab'); knob.style.transform = ''; onEnd(); };
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => el.addEventListener(ev, end));
+}
+dragControl(E.joy, E.joyKnob, (dx, dy, r) => {
+  const R = r.width / 2 - E.joyKnob.offsetWidth / 2, len = Math.hypot(dx, dy);
+  if (len > R){ dx *= R / len; dy *= R / len; }
+  E.joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  const [nx, ny] = stick(dx, dy, R, DEAD);
+  IN.joy.x = nx * (E.invPan.checked ? -1 : 1); IN.joy.y = ny * (E.invTilt.checked ? -1 : 1);
+  joyPush();
+}, () => { IN.joy.x = IN.joy.y = 0; joyPush(); });
+dragControl(E.zrock, E.zKnob, (dx, dy, r) => {
+  const R = r.height / 2 - E.zKnob.offsetHeight / 2; dy = Math.max(-R, Math.min(R, dy));
+  E.zKnob.style.transform = `translate(-50%, calc(-50% + ${dy}px))`;
+  const m = Math.abs(dy / R);
+  IN.zoom = m < DEAD ? 0 : Math.sign(-dy) * shape((m - DEAD) / (1 - DEAD));
+  joyPush();
+}, () => { IN.zoom = 0; joyPush(); });
+
+/* keys go through the same engine */
+const STEP = [0.02, 0.04, 0.07, 0.1, 0.15];
+function startMove(dx, dy, dz){
+  if (!S.ptzOk) return;
+  clearInterval(S.stepTimer); S.stepTimer = null;
+  if (E.zmode.value === 'step' && dz){
+    const d = dz, f = () => ptz('/api/ptz/zoomstep', {dz: d * STEP[E.zspeed.value - 1]}).catch(() => {});
+    f(); S.stepTimer = setInterval(f, 450); dz = 0;
+  }
+  const v = vel(dx, dy, dz);
+  S.moving = (v.x || v.y || v.z) ? v : null;
+  IN.keys = v; joyPush();
+}
+function stopMove(){
+  clearInterval(S.stepTimer); S.stepTimer = null;
+  S.moving = null; IN.keys = {x: 0, y: 0, z: 0}; joyPush();
+}
+
+/* ---------- curve editor ---------- */
+const AXES = [['pan', 'Pan', '--c-pan'], ['tilt', 'Tilt', '--c-tilt'], ['zoom', 'Zoom', '--c-zoom']];
+const sec = (v) => `${v.toFixed(2)} s`, pct = (v) => `${Math.round(v * 100)} %`;
+const KF = [['accel_s', 'Accelerate', 0.1, 4, 0.05, sec], ['decel_s', 'Brake', 0.1, 4, 0.05, sec], ['s_share', 'S-shape', 0, 1, 0.05, pct], ['max', 'Top speed', 0.1, 1, 0.05, pct]];
+let kSaveT = null;
+async function loadCurves(){
+  try { const r = await api('/api/curves'); S.curves = r.curves; S.curveDefaults = r.defaults; buildCurves(); }
+  catch (e) { log(`Curves not readable: ${e.message}`, 'warn'); }
+}
+function buildCurves(){
+  const g = $('#cgrid'); g.textContent = '';
+  AXES.forEach(([ax, lbl, col]) => {
+    const a = document.createElement('div'); a.className = 'ax';
+    const dot = document.createElement('i'); dot.style.background = `var(${col})`; a.append(dot, lbl); g.append(a);
+    KF.forEach(([key, name, lo, hi, step, f]) => {
+      const cell = document.createElement('div'); cell.className = 'cell';
+      const id = `k-${ax}-${key}`;
+      const head = document.createElement('div'); head.className = 'ctl-head';
+      const l = document.createElement('label'); l.className = 'lbl'; l.htmlFor = id; l.textContent = name;
+      const out = document.createElement('output'); out.htmlFor = id; out.textContent = f(S.curves[ax][key]);
+      head.append(l, out);
+      const inp = document.createElement('input'); inp.type = 'range'; inp.id = id; inp.min = lo; inp.max = hi; inp.step = step; inp.value = S.curves[ax][key];
+      inp.setAttribute('aria-label', `${lbl}: ${name}`);
+      inp.addEventListener('input', () => { S.curves[ax][key] = +inp.value; out.textContent = f(+inp.value); drawCurves(); saveCurvesSoon(); });
+      cell.append(head, inp); g.append(cell);
+    });
+  });
+  E.kExpo.value = S.curves.expo; E.kExpoOut.textContent = pct(S.curves.expo);
+  E.kRate.value = String(S.curves.rate_hz); E.kPath.value = S.curves.pt_path;
+  E.kLevels.checked = S.curves.levels_enabled !== false;
+  drawCurves();
+}
+function saveCurvesSoon(){
+  E.curveSave.textContent = 'saving …';
+  clearTimeout(kSaveT);
+  kSaveT = setTimeout(async () => {
+    try {
+      const path = S.curves.pt_path;
+      S.curves = (await api('/api/curves', S.curves)).curves; E.curveSave.textContent = 'saved';
+      if (S.status && S.status.control && path !== (S._pathOld || path)){ S.status = await api('/api/status'); renderConn(); }
+      S._pathOld = path;
+    } catch (e) { E.curveSave.textContent = 'not saved'; log(e.message, 'err'); }
+  }, 450);
+}
+E.kExpo.addEventListener('input', () => { S.curves.expo = +E.kExpo.value; E.kExpoOut.textContent = pct(S.curves.expo); saveCurvesSoon(); });
+E.kRate.addEventListener('change', () => { S.curves.rate_hz = +E.kRate.value; saveCurvesSoon(); });
+E.kLevels.addEventListener('change', () => { S.curves.levels_enabled = E.kLevels.checked; saveCurvesSoon(); });
+E.kPath.addEventListener('change', () => { S._pathOld = S.curves.pt_path; S.curves.pt_path = E.kPath.value; saveCurvesSoon(); log(`Pan/tilt now via ${E.kPath.value === 'onvif' ? 'ONVIF' : 'the web API'}.`); });
+E.kDefaults.addEventListener('click', () => { if (!S.curveDefaults) return; S.curves = JSON.parse(JSON.stringify(S.curveDefaults)); buildCurves(); saveCurvesSoon(); });
+E.kTest.addEventListener('click', () => {
+  if (!S.ptzOk) return;
+  IN.keys = {x: 0.35, y: 0.35, z: 0}; joyPush();
+  setTimeout(() => { IN.keys = {x: 0, y: 0, z: 0}; joyPush(); log('Diagonal driven (up right). Did the camera move diagonally? If only one axis moved, choose the web API under "Pan/tilt via".'); }, 1600);
+});
+
+/* preview: the same computation as in the server (motion.py) */
+function limits(ramp, s){ ramp = Math.max(0.05, ramp); s = Math.min(1, Math.max(0, s)); if (s < 0.01) return [1 / ramp, Infinity]; const a = 1 / (ramp * (1 - s / 2)); return [a, 2 * a / (s * ramp)]; }
+function simAxis(c, tSwitch, tEnd, dt){
+  let v = 0, a = 0; const pts = [];
+  for (let t = 0; t <= tEnd; t += dt){
+    const target = t < tSwitch ? c.max : 0, e = target - v;
+    if (Math.abs(e) < 1e-4 && Math.abs(a) < 1e-3){ v = target; a = 0; }
+    else {
+      const braking = Math.abs(target) < Math.abs(v) - 1e-9 || target * v < 0;
+      const [am, j] = limits(braking ? c.decel_s : c.accel_s, c.s_share);
+      const ad = Math.sign(e) * (j === Infinity ? am : Math.min(am, Math.sqrt(2 * j * Math.abs(e))));
+      a = j === Infinity ? ad : a + Math.max(-j * dt, Math.min(j * dt, ad - a));
+      let nv = v + a * dt; if ((target - nv) * e <= 0){ nv = target; a = 0; } v = nv;
+    }
+    pts.push([t, v]);
+  }
+  return pts;
+}
+function drawCurves(){
+  const cv = $('#curveCv'); if (!cv || !S.curves) return;
+  const css = getComputedStyle(document.documentElement), col = (n) => css.getPropertyValue(n).trim();
+  const W = cv.clientWidth, H = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (!W) return;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
+  const up = Math.max(...AXES.map(([k]) => S.curves[k].accel_s)), dn = Math.max(...AXES.map(([k]) => S.curves[k].decel_s));
+  const tSwitch = up * 1.05 + 0.4, tEnd = tSwitch + dn * 1.05 + 0.3;
+  const L = 40, Rm = 10, T = 10, B = 22, pw = W - L - Rm, ph = H - T - B;
+  const X = (t) => L + t / tEnd * pw, Y = (v) => T + (1 - v) * ph;
+  x.font = '11px ' + col('--f-mono'); x.fillStyle = col('--muted'); x.strokeStyle = col('--line'); x.lineWidth = 1;
+  [0, 0.5, 1].forEach(v => { x.beginPath(); x.moveTo(L, Y(v) + .5); x.lineTo(W - Rm, Y(v) + .5); x.stroke(); x.textAlign = 'right'; x.textBaseline = 'middle'; x.fillText(`${v * 100} %`, L - 6, Y(v)); });
+  const stepT = tEnd > 6 ? 1 : 0.5;
+  x.textAlign = 'center'; x.textBaseline = 'top';
+  for (let t = 0; t <= tEnd + 1e-9; t += stepT){ x.beginPath(); x.moveTo(X(t) + .5, T); x.lineTo(X(t) + .5, T + ph); x.globalAlpha = .45; x.stroke(); x.globalAlpha = 1; x.fillText(`${Math.round(t * 10) / 10} s`, X(t), T + ph + 5); }
+  x.setLineDash([4, 4]); x.beginPath(); x.moveTo(X(tSwitch) + .5, T); x.lineTo(X(tSwitch) + .5, T + ph); x.strokeStyle = col('--muted'); x.stroke(); x.setLineDash([]);
+  AXES.forEach(([k, , c]) => {
+    const pts = simAxis(S.curves[k], tSwitch, tEnd, 0.01);
+    x.beginPath(); pts.forEach(([t, v], i) => i ? x.lineTo(X(t), Y(v)) : x.moveTo(X(t), Y(v)));
+    x.strokeStyle = col(c); x.lineWidth = 2.2; x.stroke();
+  });
+}
+window.addEventListener('resize', () => drawCurves());
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawCurves()); } catch {}
+
+function goHome(){ return ptz('/api/ptz/home', {}).then(() => log('Going home.')).catch(() => {}); }
+E.homeBtn.addEventListener('click', goHome);
+E.setHome.addEventListener('click', () => ptz('/api/ptz/sethome', {}).then(() => log('Current view saved as home.', 'ok')).catch(() => {}));
+
+/* keyboard: arrows can be combined, releasing stops */
+const keys = new Set();
+function keyVec(){
+  const dx = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
+  const dy = (keys.has('ArrowUp') ? 1 : 0) - (keys.has('ArrowDown') ? 1 : 0);
+  const dz = (keys.has('+') ? 1 : 0) - (keys.has('-') ? 1 : 0);
+  return [dx, dy, dz];
+}
+function normKey(k){ return k === '=' ? '+' : (k === '_' ? '-' : k); }
+document.addEventListener('keydown', (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey || settingsOpen()) return;
+  if (e.target.closest && e.target.closest('input, select, textarea')) return;
+  const k = normKey(e.key);
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '+', '-'].includes(k)){
+    e.preventDefault(); if (e.repeat || keys.has(k)) return;
+    keys.add(k); const [dx, dy, dz] = keyVec(); startMove(dx, dy, dz); return;
+  }
+  if (e.repeat) return;
+  if (k === 'h' || k === 'H'){ e.preventDefault(); if (S.ptzOk) goHome(); return; }
+  if (/^[1-9]$/.test(k)){ e.preventDefault(); goto(k); }
+});
+document.addEventListener('keyup', (e) => {
+  const k = normKey(e.key);
+  if (!keys.delete(k)) return;
+  const [dx, dy, dz] = keyVec();
+  if (dx || dy || dz) startMove(dx, dy, dz); else stopMove();
+});
+window.addEventListener('blur', () => {
+  keys.clear(); stopMove(); focusPush(0, 0); midEnd();
+  IN.joy.x = IN.joy.y = IN.zoom = 0; IN.wheel.x = IN.wheel.y = IN.wheel.z = 0; IN.mid.x = IN.mid.y = 0;
+  E.joyKnob.style.transform = ''; E.zKnob.style.transform = ''; joyPush();
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden){ keys.clear(); stopMove(); } });
+
+function renderPTZ(){
+  const ok = S.ptzOk;
+  E.joy.classList.toggle('off', !ok); E.zrock.classList.toggle('off', !ok);
+  E.homeBtn.disabled = !ok;
+  renderFocus();
+  E.reloadPresets.disabled = !ok;
+  E.setHome.disabled = !(S.status && S.status.onvif.connected);
+  renderPresets();
+}
+
+/* ---------- presets (stored in the camera) ---------- */
+async function loadPresets(){
+  if (!S.ptzOk) return;
+  try { const r = await api('/api/ptz/presets'); S.presets = r.presets || []; S.presetNames = r.names || {}; }
+  catch (e) { S.presets = []; log(`Presets not readable: ${e.message}`, 'warn'); }
+  const st = S.status || {}, w = st.control && st.control.kind === 'web' ? st.control.web : null;
+  const max = w ? w.presets_max : (st.onvif && st.onvif.ptz_node && st.onvif.ptz_node.presets_max);
+  E.presetInfo.textContent = `${S.presets.length} in the camera${max ? ` · max. ${max}` : ''}`;
+  renderPresets(!(document.activeElement && document.activeElement.tagName === 'INPUT' && E.presets.contains(document.activeElement)));
+}
+function presetFor(token){ return S.presets.find(p => p.token === token); }
+function renderPresets(force){
+  // in edit mode, do not rebuild (the cursor would jump out of the name field)
+  if (S.posEdit && !force && E.presets.querySelector('.posedit')){
+    E.presets.querySelectorAll('.posedit .iconbtn').forEach(b => b.disabled = !S.ptzOk);
+    return;
+  }
+  E.presets.textContent = '';
+  const names = S.presetNames || {};
+  for (let i = 1; i <= SLOTS; i++){
+    const tok = String(i), p = presetFor(tok), name = names[tok] || (p && p.label) || (p && p.name) || '';
+    if (S.posEdit){
+      const box = document.createElement('div'); box.className = 'posedit'; box.dataset.tok = tok;
+      const b = document.createElement('b'); b.textContent = tok;
+      const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'iconbtn'; sv.innerHTML = icon('save');
+      sv.title = p ? 'Save the current view here (overwrites)' : 'Save the current view here'; sv.disabled = !S.ptzOk;
+      let armed = null;
+      sv.addEventListener('click', () => {
+        if (p && !armed){ sv.classList.add('confirm'); sv.innerHTML = icon('check'); sv.title = 'Tap again to overwrite'; armed = setTimeout(() => { armed = null; sv.classList.remove('confirm'); sv.innerHTML = icon('save'); }, 2500); return; }
+        clearTimeout(armed); armed = null;
+        ptz('/api/ptz/setpreset', {token: tok, name: inp.value || `Preset${tok}`}).then(() => { log(`Preset ${tok} saved.`, 'ok'); loadPresets(); }).catch(() => renderPresets(true));
+      });
+      const inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 40; inp.value = name; inp.placeholder = p ? 'Name' : 'empty';
+      inp.setAttribute('aria-label', `Name of preset ${tok}`);
+      let t = null;
+      const saveName = () => { clearTimeout(t); api('/api/ptz/name', {token: tok, name: inp.value}).then(r => { S.presetNames = r.names; }).catch(e => log(e.message, 'err')); };
+      inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(saveName, 600); });
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); saveName(); inp.blur(); } });
+      inp.addEventListener('change', saveName);
+      box.append(b, inp, sv); E.presets.append(box);
+    } else {
+      const wrap = document.createElement('div'); wrap.className = 'posw';
+      const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'pos' + (p ? '' : ' vacant'); btn.dataset.tok = tok;
+      const b = document.createElement('b'); b.textContent = tok;
+      const n = document.createElement('span'); n.className = 'pn'; n.textContent = p ? (name || `Preset ${tok}`) : (name ? `${name} (empty)` : 'empty');
+      btn.append(b, n);
+      if (p && p.straight){ const g = document.createElement('i'); g.className = 'gd'; g.setAttribute('aria-hidden', 'true'); btn.append(g); }
+      btn.disabled = !S.ptzOk || !p;
+      btn.title = p ? `Recall ${name || 'preset ' + tok} (key ${tok})${p.straight ? ' · straight move' : ' · the camera moves on its own, the target is learned meanwhile'}` : `Preset ${tok} is empty – save it with the pencil above`;
+      btn.addEventListener('click', () => goto(tok));
+      // quick save: double-click the small button next to the tile
+      const set = document.createElement('button'); set.type = 'button'; set.className = 'pset'; set.innerHTML = icon('save');
+      set.title = `Double-click: save the current view as ${name || 'preset ' + tok}${p ? ' (overwrites)' : ''}`;
+      set.setAttribute('aria-label', `Save the current view as preset ${tok} (double-click)`);
+      set.disabled = !S.ptzOk;
+      set.addEventListener('click', (e) => { if (e.detail > 1) return; clearTimeout(set._t); set._t = setTimeout(() => showLast(`Double-click to save preset ${tok}.`, 'warn'), 320); });
+      set.addEventListener('dblclick', () => clearTimeout(set._t));
+      set.addEventListener('dblclick', (e) => {
+        e.preventDefault(); set._dbl = true; setTimeout(() => { set._dbl = false; }, 600);
+        ptz('/api/ptz/setpreset', {token: tok, name: name || `Preset${tok}`}).then(() => {
+          log(`Preset ${tok}${name ? ` "${name}"` : ''} saved.`, 'ok');
+          set.classList.add('saved'); setTimeout(() => { set.classList.remove('saved'); loadPresets(); }, 900);
+        }).catch(() => {});
+      });
+      wrap.append(btn, set);
+      E.presets.append(wrap);
+    }
+  }
+  const extra = S.presets.filter(p => !/^[1-9]$/.test(p.token));
+  E.extra.textContent = '';
+  extra.forEach(p => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn small';
+    b.textContent = p.label || p.name || p.token; b.disabled = !S.ptzOk; b.addEventListener('click', () => goto(p.token)); E.extra.append(b);
+  });
+  E.extraWrap.hidden = !extra.length;
+}
+E.pEdit.addEventListener('click', () => { S.posEdit = !S.posEdit; E.pEdit.setAttribute('aria-pressed', String(S.posEdit)); renderPresets(true); });
+function goto(tok){
+  if (!S.ptzOk) return;
+  if (/^[1-9]$/.test(tok) && !presetFor(tok)){ log(`Preset ${tok} is not saved yet.`, 'warn'); return; }
+  const label = (S.presetNames && S.presetNames[tok]) || `preset ${tok}`;
+  ptz('/api/ptz/goto', {token: tok}).then((r) => {
+    r = r || {};
+    const ms = r.route === 'straight' ? r.duration_s * 1000 : 1500;
+    log(r.route === 'straight' ? `Moving straight to "${label}" (${r.duration_s} s).` : `Recalling "${label}" (the camera moves on its own).`);
+    const el = E.presets.querySelector(`[data-tok="${tok}"]`); if (el){ el.classList.add('flash'); clearTimeout(el._ft); el._ft = setTimeout(() => el.classList.remove('flash'), ms); }
+    if (r.route === 'camera') setTimeout(loadPresets, 5000);   // show the learned target
+  }).catch(() => {});
+}
+E.reloadPresets.addEventListener('click', loadPresets);
+
+/* ---------- diagnostics ---------- */
+function renderDiag(){
+  E.diagBody.textContent = '';
+  const add = (k, v) => { const tr = document.createElement('tr'); const a = document.createElement('td'); a.className = 'k'; a.textContent = k; const b = document.createElement('td'); b.className = 'v'; b.textContent = v == null || v === '' ? '–' : String(v); tr.append(a, b); E.diagBody.append(tr); };
+  const st = S.status;
+  if (!st){ add('Server', 'not reachable'); E.report.value = ''; return; }
+  const o = st.onvif, i = o.info || {};
+  add('Camera', `${st.camera.ip} · ONVIF port ${st.camera.onvif_port} · user ${st.camera.user || '–'}`);
+  add('ONVIF', o.connected ? 'connected' : `not connected${o.error ? ': ' + o.error : ''}`);
+  if (o.connected){
+    add('Device', [i.Manufacturer, i.Model].filter(Boolean).join(' '));
+    add('Firmware', i.FirmwareVersion);
+    add('Profile', o.profile ? `${o.profile.name} (token ${o.profile.token}) · ${o.profile.codec} ${o.profile.width}×${o.profile.height} · PTZ ${o.profile.ptz ? 'yes' : 'no'}` : '–');
+    if (o.profiles && o.profiles.length > 1) add('Other profiles', o.profiles.filter(p => p.token !== (o.profile || {}).token).map(p => [p.name || p.token, p.codec, p.width ? `${p.width}×${p.height}` : ''].filter(Boolean).join(' ')).join(' · '));
+    add('PTZ service', o.services.ptz);
+    if (o.ptz_node && o.ptz_node.name) add('PTZ node', `${o.ptz_node.name} · home ${o.ptz_node.home || '?'} · max. ${o.ptz_node.presets_max || '?'} presets`);
+    if (Math.abs(o.clock_offset_s) > 5) add('Camera clock', `${o.clock_offset_s > 0 ? '+' : ''}${o.clock_offset_s} s relative to this computer`);
+  }
+  if (st.control){
+    const c = st.control, w = c.web || {};
+    add('Control', `${c.kind === 'web' ? 'camera web API' : 'ONVIF'} (setting: ${c.setting})`);
+    add('Web API', w.connected ? `logged in · PTZ speed ${(w.speed_range.ptz || []).join('–')} · zoom ${(w.speed_range.zoom || []).join('–')}${w.presets_max ? ' · max. ' + w.presets_max + ' presets' : ''}` : (w.error || 'not logged in'));
+  }
+  add('Video service', st.video.state);
+  if (S.ai) add('Tracking (camera)', Object.entries(S.ai).map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · '));
+  if (S.pc) add('WebRTC', `${S.pc.connectionState} · ${S.stats.codec || '?'} · ${S.stats.width || '?'}×${S.stats.height || '?'} · ${S.stats.fps ? Math.round(S.stats.fps) : '?'} fps · lost ${S.stats.lost ?? '?'} · jitter ${S.stats.jitter_ms ?? '?'} ms`);
+  E.report.value = reportText();
+}
+function reportText(){
+  return JSON.stringify({created: new Date().toISOString(), browser: navigator.userAgent, status: S.status, webrtc: S.pc ? {state: S.pc.connectionState, ...S.stats} : null, presets: S.presets, tracking: S.ai || null, visca: S.viscaCheck ? S.viscaCheck.result : null, zoomKeys: E.zmode.value, onvifRaw: S.onvifRaw || null}, null, 2);
+}
+E.onvifRaw.addEventListener('click', async () => {
+  E.onvifRaw.disabled = true;
+  try { S.onvifRaw = await api('/api/diagnostics'); log('Raw ONVIF data fetched. It is now part of the report.', 'ok'); renderDiag(); }
+  catch (e) { log(e.message, 'err'); }
+  E.onvifRaw.disabled = false;
+});
+E.copyReport.addEventListener('click', () => {
+  const t = reportText(); E.report.value = t;
+  const fb = () => { const d = E.report.closest('details'); d.open = true; E.report.focus(); E.report.select(); log('Report selected, copy it with Ctrl+C.', 'warn'); };
+  try { navigator.clipboard.writeText(t).then(() => log('Report copied to the clipboard.', 'ok'), fb); } catch { fb(); }
+});
+
+/* ---------- actions ---------- */
+E.snap.addEventListener('click', () => {
+  const v = E.video; if (!v.videoWidth) return;
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  const x = c.getContext('2d');
+  if (S.rot){ x.translate(c.width, c.height); x.rotate(Math.PI); }
+  x.drawImage(v, 0, 0);
+  c.toBlob(b => { if (b){ saveBlob(b, `ptz_${stamp()}.jpg`); log(`Still saved (${c.width} × ${c.height}).`, 'ok'); } }, 'image/jpeg', 0.92);
+});
+/* recording runs in the server, not in the browser */
+const hms = (s) => [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(n => String(n).padStart(2, '0')).join(':');
+const mb = (b) => b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(2)} GB` : `${Math.round(b / 1024 ** 2)} MB`;
+function renderRec(){
+  const r = S.recSt, vidOk = videoOk(S.status);
+  E.rec.disabled = !vidOk && !(r && r.active);
+  E.recDir.disabled = !S.status;
+  if (!r){ return; }
+  E.rec.innerHTML = icon(r.active ? 'square' : 'circle') + `<span>${r.active ? hms(r.duration_s) : 'Record'}</span>`;
+  E.rec.setAttribute('aria-pressed', String(!!r.active));
+  E.recPill.hidden = !r.active;
+  const free = r.free_gb != null ? ` · ${r.free_gb} GB free` : '';
+  if (r.active){
+    E.recPill.textContent = `REC ${hms(r.duration_s)}`;
+    E.recPill.title = `${r.file || ''} · ${mb(r.bytes)}${free}${r.split_minutes ? ` · new file every ${r.split_minutes} min` : ''}${r.error ? ' · ' + r.error : ''}`;
+    E.rec.title = `Stop recording · ${mb(r.bytes)}${free}`;
+  } else {
+    E.rec.title = `Start recording${free} – to ${r.folder} (stream "${r.stream}", original quality${r.split_minutes ? `, one file every ${r.split_minutes} min` : ''})${r.error ? ' · ' + r.error : ''}`;
+  }
+  E.rec.classList.toggle('warn', !!r.error);
+}
+async function pollRec(){
+  try { const r = await api('/api/recording'); if (S.recSt && S.recSt.active && !r.active && r.error) log(r.error, 'err'); S.recSt = r; }
+  catch {}
+  renderRec();
+  clearTimeout(S.recTimer); S.recTimer = setTimeout(pollRec, S.recSt && S.recSt.active ? 1000 : 5000);
+}
+E.rec.addEventListener('click', async () => {
+  E.rec.disabled = true;
+  try {
+    if (S.recSt && S.recSt.active){ S.recSt = await api('/api/recording/stop', {}); log(`Recording stopped: ${S.recSt.files.length} file(s), ${mb(S.recSt.bytes)}.`, 'ok'); }
+    else { S.recSt = await api('/api/recording/start', {}); log(`Recording started → ${S.recSt.folder}`, 'ok'); }
+  } catch (e) { log(e.message, 'err'); }
+  renderRec(); pollRec();
+});
+E.recDir.addEventListener('click', () => api('/api/recording/folder', {}).catch(e => log(e.message, 'err')));
+function applyOvl(){ const [m, l] = OVL[S.ovl]; E.overlay.dataset.mode = m; E.ovl.title = `Guides: ${l}`; E.ovl.setAttribute('aria-pressed', String(m !== 'none')); E.ovl.querySelector('span').textContent = m === 'none' ? 'Guides' : l; }
+E.ovl.addEventListener('click', () => { S.ovl = (S.ovl + 1) % OVL.length; applyOvl(); store.set('view-ovl', S.ovl); });
+function applyRot(){ E.stage.classList.toggle('rot', S.rot); E.rot.setAttribute('aria-pressed', String(S.rot)); }
+E.rot.addEventListener('click', () => { S.rot = !S.rot; applyRot(); store.set('view-rot', S.rot); });
+E.fs.addEventListener('click', () => {
+  if (document.fullscreenElement){ document.exitFullscreen().catch(() => {}); return; }
+  if (E.stage.requestFullscreen) E.stage.requestFullscreen().catch(() => log('Full screen not possible.', 'warn'));
+});
+
+/* ---------- connection controls ---------- */
+E.vStart.addEventListener('click', startVideo);
+E.emptyStart.addEventListener('click', startVideo);
+E.vStop.addEventListener('click', () => { stopVideo(); renderConn(); log('Video stopped.'); });
+E.stream.addEventListener('change', () => { store.set('stream', E.stream.value); if (S.pc) startVideo(); });
+E.reconnect.addEventListener('click', async () => {
+  E.reconnect.disabled = true; log('Reconnecting the camera …');
+  try { S.status = await api('/api/connect', {}); S.ptzOk = ptzAvailable(S.status); renderConn(); if (S.ptzOk){ log('Camera connected.', 'ok'); loadPresets(); } }
+  catch (e) { log(e.message, 'err'); await loadStatus(); }
+  E.reconnect.disabled = false;
+});
+const speedLbl = () => { E.speedOut.textContent = SPEED[E.speed.value - 1][1]; E.zspeedOut.textContent = SPEED[E.zspeed.value - 1][1]; };
+E.speed.addEventListener('input', () => { speedLbl(); store.set('ptz-speed', E.speed.value); });
+E.zspeed.addEventListener('input', () => { speedLbl(); store.set('ptz-zspeed', E.zspeed.value); });
+E.invPan.addEventListener('change', () => store.set('ptz-invPan', E.invPan.checked));
+E.invTilt.addEventListener('change', () => store.set('ptz-invTilt', E.invTilt.checked));
+E.zmode.addEventListener('change', () => { stopMove(); store.set('ptz-zmode', E.zmode.value); });
+
+/* ---------- recordings view: list and stabilization ---------- */
+const mmss = (s) => s == null ? '–' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+async function loadPost(){
+  try {
+    const [g, a] = await Promise.all([api('/api/stabilize'), api('/api/recordings')]);
+    S.gl = g; S.files = a; renderPost();
+    if (g.running) pollGl();
+  } catch (e) { E.ffInfo.textContent = e.message; E.ffInfo.className = 'note err'; }
+}
+function renderGl(){
+  const g = S.gl; if (!g) return;
+  const pk = g.packages || {};
+  E.glDeps.hidden = pk.ok || !g.ffmpeg.ok; E.glDeps.disabled = !!pk.running;
+  E.glDeps.textContent = pk.running ? 'Installing … (takes about a minute)' : 'Install numpy and OpenCV';
+  if (g.ready){ E.ffInfo.textContent = `Ready · ffmpeg: ${g.ffmpeg.info} · ${pk.info}`; E.ffInfo.className = 'note'; }
+  else if (!g.ffmpeg.ok){
+    E.ffInfo.className = 'note warn';
+    E.ffInfo.textContent = `Stabilizing needs ffmpeg (${g.ffmpeg.info}). Once, in a command prompt: winget install Gyan.FFmpeg – then "Check again". Alternatively put ffmpeg.exe into the PTZ Desk folder.`;
+  } else {
+    E.ffInfo.className = pk.error ? 'note err' : 'note warn';
+    E.ffInfo.textContent = pk.error ? `Installation: ${pk.error}` : 'ffmpeg is there. The Python packages numpy and OpenCV are still missing (about 60 MB together, installed with pip).';
+  }
+  if (pk.running) setTimeout(() => api('/api/stabilize').then(x => { S.gl = x; renderPost(); }).catch(() => {}), 2000);
+  E.glFill.style.width = `${Math.round((g.running || g.result ? g.progress : 0) * 100)}%`;
+  E.glStop.hidden = !g.running;
+  if (g.running) E.glInfo.textContent = `${g.file}: ${g.phase} · ${Math.round(g.progress * 100)} %`;
+  else if (g.error) E.glInfo.textContent = `${g.file || ''}: ${g.error}`;
+  else if (g.result) E.glInfo.textContent = `Done: ${g.result}`;
+  else E.glInfo.textContent = '';
+  E.glInfo.className = g.error && g.error !== 'cancelled' ? 'note err' : 'note';
+}
+function renderPost(){
+  renderGl();
+  const a = S.files, g = S.gl || {}; if (!a) return;
+  E.pfFolder.textContent = a.folder;
+  E.pfBody.textContent = '';
+  if (!a.files.length){ const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 5; td.textContent = 'No recordings in the folder yet.'; tr.append(td); E.pfBody.append(tr); return; }
+  a.files.forEach(f => {
+    const tr = document.createElement('tr');
+    const c1 = document.createElement('td'); const nm = document.createElement('span'); nm.className = 'fname'; nm.textContent = f.name;
+    const sub = document.createElement('span'); sub.className = 'sub2';
+    sub.textContent = f.recording ? 'recording right now' : (f.smooth ? `stabilized: ${f.smooth}` : f.time);
+    if (f.smooth && !f.recording) sub.classList.add('ok');
+    c1.append(nm, sub);
+    const c2 = document.createElement('td'); c2.textContent = mmss(f.duration_s);
+    const c3 = document.createElement('td'); c3.textContent = `${f.mb} MB`;
+    const c4 = document.createElement('td'); c4.textContent = f.recording ? '' : (f.audio === undefined ? '?' : (f.audio || 'none'));
+    const c5 = document.createElement('td'); c5.className = 'act';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn small' + (f.smooth ? '' : ' primary');
+    b.textContent = f.smooth ? 'Stabilize again' : 'Stabilize';
+    b.disabled = f.recording || g.running || !g.ready;
+    b.addEventListener('click', () => startGl(f.name));
+    c5.append(b);
+    if (f.smooth){ const z = document.createElement('button'); z.type = 'button'; z.className = 'btn small'; z.textContent = 'Show'; z.addEventListener('click', () => api('/api/recordings/reveal', {file: f.smooth}).catch(e => log(e.message, 'err'))); c5.append(z); }
+    tr.append(c1, c2, c3, c4, c5); E.pfBody.append(tr);
+  });
+}
+async function startGl(name){
+  try { S.gl = await api('/api/stabilize/start', {file: name, strength: E.glStrength.value}); log(`Stabilizing started: ${name}`, 'ok'); renderPost(); pollGl(); }
+  catch (e) { log(e.message, 'err'); }
+}
+let glTimer = null;
+function pollGl(){
+  clearTimeout(glTimer);
+  glTimer = setTimeout(async () => {
+    try {
+      const was = S.gl && S.gl.running; S.gl = await api('/api/stabilize'); renderGl();
+      if (S.gl.running) pollGl();
+      else if (was){ if (S.gl.error) log(`Stabilizing: ${S.gl.error}`, S.gl.error === 'cancelled' ? 'warn' : 'err'); else log(`Stabilized: ${S.gl.result}`, 'ok'); loadPost(); }
+    } catch {}
+  }, 800);
+}
+E.glStop.addEventListener('click', () => api('/api/stabilize/stop', {}).then(g => { S.gl = g; renderGl(); }).catch(e => log(e.message, 'err')));
+E.pfReload.addEventListener('click', loadPost);
+E.glDeps.addEventListener('click', async () => { try { S.gl = await api('/api/stabilize/install', {}); renderPost(); } catch (e) { log(e.message, 'err'); } });
+E.ffCheck.addEventListener('click', async () => { try { S.gl = await api('/api/stabilize/check', {}); renderPost(); } catch (e) { log(e.message, 'err'); } });
+E.glStrength.value = store.get('gl-strength', 'medium');
+E.glStrength.addEventListener('change', () => store.set('gl-strength', E.glStrength.value));
+
+/* ---------- settings dialog with tabs ---------- */
+const TABS = [...E.dlg.querySelectorAll('.side button')];
+function showTab(t){
+  if (!TABS.some(b => b.dataset.tab === t)) t = 'camera';
+  TABS.forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+  E.dlg.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.dataset.pane === t));
+  store.set('settings-tab', t);
+  if (t === 'motion') requestAnimationFrame(() => drawCurves());
+  if (t === 'recordings') loadPost();
+  if (t === 'audio') loadAudio();
+}
+function openSettings(t){
+  keys.clear(); stopMove();
+  if (!E.dlg.open) E.dlg.showModal();
+  showTab(t || store.get('settings-tab', 'camera'));
+}
+TABS.forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+E.openSettings.addEventListener('click', () => openSettings());
+E.closeSettings.addEventListener('click', () => E.dlg.close());
+E.dlg.addEventListener('click', (e) => { if (e.target === E.dlg) E.dlg.close(); });   // click on the backdrop
+
+/* ---------- audio source ---------- */
+function renderAudio(){
+  const a = S.audio; if (!a) return;
+  const cur = a.source === 'device' ? 'device:' + a.device : 'camera';
+  E.auSrc.textContent = '';
+  E.auSrc.add(new Option('Camera stream (line input)', 'camera'));
+  const devs = a.devices.slice();
+  if (a.source === 'device' && a.device && !devs.includes(a.device)) devs.push(a.device);
+  devs.forEach(d => E.auSrc.add(new Option(`This computer: ${d}`, 'device:' + d)));
+  E.auSrc.value = cur;
+  E.auInfo.textContent = a.info || '';
+  E.auSrc.disabled = !!S.audioBusy;
+}
+async function loadAudio(refresh){
+  try { S.audio = refresh ? await api('/api/audio/devices', {}) : await api('/api/audio'); renderAudio(); }
+  catch (e) { E.auInfo.textContent = e.message; }
+}
+E.auRefresh.addEventListener('click', () => { E.auInfo.textContent = 'Searching …'; loadAudio(true); });
+E.auSrc.addEventListener('change', async () => {
+  const v = E.auSrc.value, dev = v.startsWith('device:') ? v.slice(7) : '';
+  S.audioBusy = true; renderAudio(); E.auInfo.textContent = 'Restarting the video service …';
+  try {
+    S.audio = await api('/api/audio', {source: dev ? 'device' : 'camera', device: dev});
+    log(`Audio source: ${dev || 'camera stream'}.`, 'ok');
+    S.status = await api('/api/status'); renderConn();
+    if (S.pc) setTimeout(startVideo, 1500);
+  } catch (e) { log(e.message, 'err'); }
+  S.audioBusy = false; renderAudio();
+});
+function applyListen(){ E.video.muted = !E.auListen.checked; if (!E.video.muted) E.video.play().catch(() => {}); }
+E.auListen.checked = !!store.get('audio-listen', false);
+E.auListen.addEventListener('change', () => { store.set('audio-listen', E.auListen.checked); applyListen(); });
+
+/* ---------- size the controls to the video: the joystick takes the remaining height ---------- */
+const CTRL = document.querySelector('.panel.ctrl'), CONTROLS = document.querySelector('.controls');
+function fitControls(){
+  if (!matchMedia('(min-width: 900px)').matches){ CONTROLS.style.setProperty('--joy', '170px'); return; }
+  const cs = getComputedStyle(CTRL);
+  let h = CTRL.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 22;   // minus the label row
+  CONTROLS.classList.toggle('tight', h < 110);
+  if (h < 110) h += 22;   // labels hidden: the joystick gets their room
+  const w = CTRL.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 2 * 48 - 2 * 10;   // minus both rockers
+  CONTROLS.style.setProperty('--joy', `${Math.round(Math.max(64, Math.min(h, w, 420)))}px`);
+}
+try { new ResizeObserver(fitControls).observe(CTRL); } catch {}
+window.addEventListener('resize', fitControls);
+
+/* ---------- VISCA check ---------- */
+let viscaArm = null;
+function renderVisca(){
+  const s = S.viscaCheck; if (!s) return;
+  E.viscaBtn.disabled = !!s.running;
+  E.viscaBtn.textContent = s.running ? 'Checking …' : 'Check VISCA'; E.viscaBtn.classList.remove('primary');
+  if (s.running){ E.viscaInfo.textContent = s.step; return; }
+  const r = s.result; if (!r) return;
+  const ok = Object.entries(r.paths || {}).filter(([, v]) => v.pan !== undefined).map(([k]) => k);
+  const m = r.motion, err = m && m.steps.find(x => x.step === 'error');
+  E.viscaInfo.textContent = ok.length
+    ? `Position readable over ${ok.join(', ')} · motion test ${err ? 'failed: ' + err.text : 'completed'} · result in visca_check.json`
+    : `No position reply over VISCA (${Object.entries(r.paths || {}).map(([k, v]) => `${k}: ${v.error || '?'}`).join(' · ')})`;
+}
+async function pollVisca(){
+  try {
+    const was = S.viscaCheck && S.viscaCheck.running;
+    S.viscaCheck = await api('/api/visca'); renderVisca();
+    if (S.viscaCheck.running) setTimeout(pollVisca, 700);
+    else if (was){ log(`VISCA check ${S.viscaCheck.error || 'done'}.`, S.viscaCheck.error ? 'warn' : 'ok'); renderDiag(); }
+  } catch {}
+}
+E.viscaBtn.addEventListener('click', async () => {
+  if (!viscaArm){
+    E.viscaBtn.textContent = 'Sure? The camera will move briefly'; E.viscaBtn.classList.add('primary');
+    viscaArm = setTimeout(() => { viscaArm = null; E.viscaBtn.textContent = 'Check VISCA'; E.viscaBtn.classList.remove('primary'); }, 4000);
+    return;
+  }
+  clearTimeout(viscaArm); viscaArm = null;
+  try { S.viscaCheck = await api('/api/visca/start', {}); renderVisca(); log('VISCA check started.', 'ok'); pollVisca(); }
+  catch (e) { log(e.message, 'err'); E.viscaBtn.textContent = 'Check VISCA'; E.viscaBtn.classList.remove('primary'); }
+});
+
+/* ---------- focus: mode, one-push, pulling ---------- */
+function renderFocus(){
+  const m = S.focusMode;
+  E.fAuto.setAttribute('aria-pressed', String(m === 'auto'));
+  E.fMan.setAttribute('aria-pressed', String(m === 'manual'));
+  const ok = S.ptzOk && S.status && S.status.control && S.status.control.web && S.status.control.web.connected;
+  [E.fAuto, E.fMan, E.fOnce].forEach(b => b.disabled = !ok);
+  E.frock.classList.toggle('off', !ok);
+}
+async function loadFocus(){ try { const r = await api('/api/focus'); S.focusMode = r.mode; } catch {} renderFocus(); }
+async function setFocusMode(m){ try { S.focusMode = (await api('/api/focus/mode', {mode: m})).mode; log(m === 'auto' ? 'Autofocus on.' : 'Focus locked.', 'ok'); } catch (e) { log(e.message, 'err'); } renderFocus(); }
+E.fAuto.addEventListener('click', () => setFocusMode('auto'));
+E.fMan.addEventListener('click', () => setFocusMode('manual'));
+E.fOnce.addEventListener('click', async () => {
+  E.fOnce.disabled = true; S.focusMode = 'auto'; renderFocus();
+  try { S.focusMode = (await api('/api/focus/once', {seconds: 2.0})).mode; log('Focused and locked.', 'ok'); } catch (e) { log(e.message, 'err'); }
+  E.fOnce.disabled = false; renderFocus();
+});
+const FSPEED = [1, 2, 3, 5, 8];
+let fNext = null, fBusy = false, fAlive = null, fDir = 0, fSpd = 0;
+function focusPush(dir, spd){
+  if (dir === fDir && spd === fSpd) return;
+  fDir = dir; fSpd = spd;
+  fNext = dir ? {direction: dir, speed: spd} : null;
+  clearInterval(fAlive); fAlive = null;
+  if (dir){ fAlive = setInterval(() => { if (fDir) api('/api/focus/drive', {direction: fDir, speed: fSpd}).catch(() => {}); }, 300); }
+  if (!fBusy) focusFlush();
+}
+async function focusFlush(){
+  fBusy = true;
+  do {
+    const n = fNext; fNext = undefined;
+    try { const r = await api(n ? '/api/focus/drive' : '/api/focus/stop', n || {}); if (r && r.mode){ S.focusMode = r.mode; renderFocus(); } }
+    catch (e) { log(e.message, 'err'); }
+  } while (fNext !== undefined);
+  fBusy = false;
+}
+dragControl(E.frock, E.fKnob, (dx, dy, r) => {
+  const R = r.height / 2 - E.fKnob.offsetHeight / 2; dy = Math.max(-R, Math.min(R, dy));
+  E.fKnob.style.transform = `translate(-50%, calc(-50% + ${dy}px))`;
+  const m = Math.abs(dy / R);
+  if (m < 0.12){ focusPush(0, 0); return; }
+  const lv = FSPEED[Math.min(FSPEED.length - 1, Math.floor((m - 0.12) / 0.88 * FSPEED.length))];
+  focusPush(dy < 0 ? -1 : 1, lv);   // up = far, down = near
+}, () => focusPush(0, 0));
+document.addEventListener('keydown', (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.repeat || settingsOpen()) return;
+  if (e.target.closest && e.target.closest('input, select, textarea')) return;
+  if (e.key === 'n' || e.key === 'N'){ e.preventDefault(); focusPush(1, e.shiftKey ? 5 : 2); }
+  if (e.key === 'f' || e.key === 'F'){ e.preventDefault(); focusPush(-1, e.shiftKey ? 5 : 2); }
+  if (e.key === 'l' || e.key === 'L'){ e.preventDefault(); E.loupe.click(); }
+});
+document.addEventListener('keyup', (e) => { if ('nNfF'.includes(e.key)) focusPush(0, 0); });
+
+/* ---------- loupe: image centre 3×, switching to the main stream meanwhile ---------- */
+E.loupe.addEventListener('click', () => {
+  S.loupe = !S.loupe;
+  E.stage.classList.toggle('lupe', S.loupe); E.loupe.setAttribute('aria-pressed', String(S.loupe)); E.loupeChip.hidden = !S.loupe;
+  const want = S.loupe ? 'main' : (S.loupePrev || E.stream.value);
+  if (S.loupe) S.loupePrev = E.stream.value;
+  if (S.pc && E.stream.value !== want && [...E.stream.options].some(o => o.value === want)){ E.stream.value = want; startVideo(); }
+});
+
+/* ---------- sharpness of the image centre (variance of the Laplacian) ---------- */
+const shC = document.createElement('canvas'); shC.width = 240; shC.height = 135;
+const shX = shC.getContext('2d', {willReadFrequently: true});
+let shHist = [];
+function measureSharp(){
+  const v = E.video;
+  if (!S.pc || !v.videoWidth || document.hidden || settingsOpen()) return;
+  const cw = v.videoWidth / 4, ch = v.videoHeight / 4;
+  try { shX.drawImage(v, (v.videoWidth - cw) / 2, (v.videoHeight - ch) / 2, cw, ch, 0, 0, 240, 135); } catch { return; }
+  const d = shX.getImageData(0, 0, 240, 135).data, W = 240, H = 135, g = new Float32Array(W * H);
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+  let sum = 0, sq = 0, n = 0;
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++){
+    const i = y * W + x, l = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - W] - g[i + W];
+    sum += l; sq += l * l; n++;
+  }
+  const val = sq / n - (sum / n) ** 2, now = Date.now();
+  shHist.push([now, val]); shHist = shHist.filter(([t]) => now - t < 10000);
+  const peak = Math.max(...shHist.map(([, x]) => x)), scale = Math.max(peak * 1.1, 1);
+  E.shFill.style.width = `${Math.min(100, val / scale * 100)}%`;
+  E.shPeak.style.left = `calc(${Math.min(100, peak / scale * 100)}% - 1px)`;
+  E.shVal.textContent = Math.round(val);
+  E.shFill.style.background = val >= peak * 0.95 ? 'var(--ok)' : 'var(--warn)';
+}
+setInterval(measureSharp, 200);
+
+/* ---------- preset moves (straight line over VISCA) ---------- */
+function renderGlide(){
+  const f = S.glide; if (!f) return;
+  const c = f.settings;
+  if (document.activeElement !== E.gMode) E.gMode.value = c.mode;
+  if (document.activeElement !== E.gMax) E.gMax.value = c.max_level;
+  if (document.activeElement !== E.gMin) E.gMin.value = c.min_duration;
+  E.gMaxV.textContent = `level ${E.gMax.value}`;
+  E.gMinV.textContent = `${E.gMin.value} s`;
+  const cal = f.calibration || {};
+  E.gCal.disabled = !!cal.running;
+  E.gCal.textContent = cal.running ? 'Measuring …' : 'Calibrate speeds';
+  E.gInfo.textContent = cal.running ? cal.step
+    : cal.error ? `Error: ${cal.error}`
+    : (c.calibrated ? 'Speeds calibrated (visca_speeds.json).' : 'Still using estimates. Calibrating takes about 2 minutes; the camera pans and tilts back and forth over a small range.');
+}
+async function loadGlide(){
+  try { S.glide = await api('/api/glide'); renderGlide(); } catch {}
+  if (S.glide && S.glide.calibration && S.glide.calibration.running) setTimeout(loadGlide, 1000);
+}
+async function setGlide(body){
+  try { S.glide = await api('/api/glide', body); renderGlide(); } catch (e) { log(e.message, 'err'); }
+}
+E.gMode.addEventListener('change', () => setGlide({mode: E.gMode.value}));
+E.gMax.addEventListener('input', () => { E.gMaxV.textContent = `level ${E.gMax.value}`; });
+E.gMax.addEventListener('change', () => setGlide({max_level: +E.gMax.value}));
+E.gMin.addEventListener('input', () => { E.gMinV.textContent = `${E.gMin.value} s`; });
+E.gMin.addEventListener('change', () => setGlide({min_duration: +E.gMin.value}));
+E.gCal.addEventListener('click', async () => {
+  try { await api('/api/glide/calibrate', {}); log('Calibrating speeds – the camera moves for about 2 minutes.', 'warn'); } catch (e) { log(e.message, 'err'); }
+  loadGlide();
+});
+
+/* ---------- double-click into the image: bring that spot to the centre ---------- */
+// Coordinates in the camera image (fraction from the centre, right/down positive) – rotation and loupe removed.
+function frameFromEvent(e){
+  const r = E.video.getBoundingClientRect();
+  let x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
+  if (S.loupe){ x /= 3; y /= 3; }
+  if (S.rot){ x = -x; y = -y; }
+  return [x, y];
+}
+const AIM_W = 320, AIM_H = 180, AIM_T = 14;   // grey image for re-finding the spot, 28×28 template
+const aimC = document.createElement('canvas'); aimC.width = AIM_W; aimC.height = AIM_H;
+const aimX = aimC.getContext('2d', {willReadFrequently: true});
+function grabGray(){
+  const v = E.video; if (!v.videoWidth) return null;
+  try { aimX.drawImage(v, 0, 0, AIM_W, AIM_H); } catch { return null; }
+  const d = aimX.getImageData(0, 0, AIM_W, AIM_H).data, g = new Float32Array(AIM_W * AIM_H);
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+  return g;
+}
+function cutPatch(g, cx, cy){
+  const n = AIM_T * 2, p = new Float32Array(n * n);
+  let m = 0;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++){ const v = g[(cy - AIM_T + y) * AIM_W + (cx - AIM_T + x)]; p[y * n + x] = v; m += v; }
+  m /= n * n; let q = 0;
+  for (let i = 0; i < p.length; i++){ p[i] -= m; q += p[i] * p[i]; }
+  return q / p.length < 20 ? null : {p, q: Math.sqrt(q)};   // too little texture to find it again
+}
+// normalized cross-correlation over the whole image (coarse, then fine)
+function findPatch(g, t){
+  const n = AIM_T * 2, nn = n * n;
+  const score = (ox, oy) => {
+    let m = 0;
+    for (let y = 0; y < n; y++){ const row = (oy + y) * AIM_W + ox; for (let x = 0; x < n; x++) m += g[row + x]; }
+    m /= nn; let sxy = 0, sxx = 0;
+    for (let y = 0; y < n; y++){ const row = (oy + y) * AIM_W + ox; for (let x = 0; x < n; x++){ const v = g[row + x] - m; sxy += v * t.p[y * n + x]; sxx += v * v; } }
+    return sxx > 1 ? sxy / (Math.sqrt(sxx) * t.q) : -1;
+  };
+  let best = [-2, 0, 0];
+  for (let oy = 0; oy <= AIM_H - n; oy += 3) for (let ox = 0; ox <= AIM_W - n; ox += 3){ const c = score(ox, oy); if (c > best[0]) best = [c, ox, oy]; }
+  const [, bx, by] = best;
+  for (let oy = Math.max(0, by - 3); oy <= Math.min(AIM_H - n, by + 3); oy++) for (let ox = Math.max(0, bx - 3); ox <= Math.min(AIM_W - n, bx + 3); ox++){ const c = score(ox, oy); if (c > best[0]) best = [c, ox, oy]; }
+  return {c: best[0], x: (best[1] + AIM_T) / AIM_W - 0.5, y: (best[2] + AIM_T) / AIM_H - 0.5};
+}
+function showAim(x, y, toCenter, secs){
+  let sx = S.rot ? -x : x, sy = S.rot ? -y : y; if (S.loupe){ sx *= 3; sy *= 3; }
+  const a = E.aim; a.classList.remove('go'); a.style.opacity = '1';
+  a.style.left = `${(sx + 0.5) * 100}%`; a.style.top = `${(sy + 0.5) * 100}%`; a.hidden = false;
+  if (toCenter){ requestAnimationFrame(() => requestAnimationFrame(() => { a.style.setProperty('--aim-t', `${secs}s`); a.classList.add('go'); a.style.left = '50%'; a.style.top = '50%'; })); }
+  clearTimeout(a._t); a._t = setTimeout(() => { a.style.opacity = '0'; setTimeout(() => { a.hidden = true; }, 400); }, (secs || 0) * 1000 + 900);
+}
+let aimRun = 0;
+// Only measure once the camera is done AND the live image (with its delay) has come to rest
+async function settledMatch(tpl, run, secs){
+  await sleep(secs * 1000);
+  for (let t0 = Date.now(); Date.now() - t0 < 4000; await sleep(150)){
+    if (run !== aimRun) return null;
+    try { const f = await api('/api/glide'); if (!f.move || !f.move.active) break; } catch { break; }
+  }
+  await sleep(300);
+  let prev = null;
+  for (let t0 = Date.now(); Date.now() - t0 < 3000; await sleep(150)){
+    if (run !== aimRun) return null;
+    const g = grabGray(); if (!g) return null;
+    const f = findPatch(g, tpl);
+    if (f.c < 0.7){ prev = null; continue; }
+    if (prev && Math.abs(f.x - prev.x) < 0.004 && Math.abs(f.y - prev.y) < 0.006) return f;
+    prev = f;
+  }
+  return null;
+}
+async function aimAt(dx, dy, tpl, step){
+  const run = ++aimRun;
+  let r;
+  try { r = await ptz('/api/ptz/click', {dx, dy}); } catch { return; }
+  showAim(dx, dy, true, r.duration_s);
+  if (!tpl) return;
+  const f = await settledMatch(tpl, run, r.duration_s);
+  if (run !== aimRun) return;   // clicked again or moved by hand in the meantime
+  if (!f){ log('Click aiming: the image did not settle or the spot was not found again – no correction.', 'warn'); return; }
+  try { await api('/api/ptz/click/learn', {zoom: r.zoom, du: r.du, dv: r.dv, dx, dy, rx: f.x, ry: f.y}); } catch {}
+  if (step < 1 && (Math.abs(f.x) > 0.03 || Math.abs(f.y) > 0.035)) aimAt(f.x, f.y, tpl, step + 1);
+}
+E.stage.addEventListener('dblclick', (e) => {
+  if (e.target !== E.video || !S.ptzOk || !S.pc) return;
+  e.preventDefault();
+  const [dx, dy] = frameFromEvent(e);
+  if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) return;
+  const g = grabGray();
+  let tpl = null;
+  if (g){
+    const cx = Math.round((dx + 0.5) * AIM_W), cy = Math.round((dy + 0.5) * AIM_H);
+    if (cx >= AIM_T && cy >= AIM_T && cx <= AIM_W - AIM_T && cy <= AIM_H - AIM_T) tpl = cutPatch(g, cx, cy);
+  }
+  showAim(dx, dy, false, 0);
+  aimAt(dx, dy, tpl, 0);
+});
+// manual input ends the correction
+[E.joy, E.zrock].forEach(el => el.addEventListener('pointerdown', () => { aimRun++; }));
+document.addEventListener('keydown', (e) => { if (/^Arrow|^[+\-=_hH1-9]$/.test(e.key)) aimRun++; });
+
+/* ---------- exposure (VISCA) ---------- */
+const EXPO_SHOW = {auto: ['expcomp'], iris: ['iris', 'expcomp'], manual: ['iris', 'shutter', 'gain'], shutter: ['shutter', 'expcomp'], bright: []};
+function renderExpo(){
+  const x = S.expo, P = E.expoPanel;
+  const ok = !!(x && x.mode !== undefined);
+  P.querySelectorAll('button').forEach(b => b.disabled = !ok || !S.ptzOk || S.expoBusy);
+  P.querySelectorAll('.segi button').forEach(b => b.setAttribute('aria-pressed', String(ok && b.dataset.m === x.mode)));
+  const show = ok ? (EXPO_SHOW[x.mode] || []) : [];
+  P.querySelectorAll('.stp').forEach(st => {
+    const k = st.dataset.k, v = x ? x[k] : undefined;
+    st.hidden = !show.includes(k) || v === undefined;
+    let t = v === undefined ? '–' : String(v);
+    if (k === 'expcomp' && v !== undefined) t = x.expcomp_on === false ? '0' : ((v - 7 > 0 ? '+' : '') + (v - 7));
+    if (k === 'iris' && v !== undefined && x.iris_max) t = v >= x.iris_max ? 'open' : `${v}/${x.iris_max}`;
+    st.querySelector('output').textContent = t;
+  });
+  E.irisOpen.hidden = !ok || !['iris', 'manual'].includes(x.mode);
+  E.expoNote.hidden = ok;
+  if (!ok) E.expoNote.textContent = x ? `Exposure not readable over VISCA (${Object.values(x.errors || {})[0] || 'no reply'}).` : 'Reading exposure …';
+}
+async function expoCall(body){
+  S.expoBusy = true; renderExpo();
+  try { S.expo = body ? await api('/api/exposure', body) : await api('/api/exposure'); }
+  catch (e) { log(e.message, 'err'); }
+  S.expoBusy = false; renderExpo();
+}
+E.expoPanel.querySelectorAll('.segi button').forEach(b => b.addEventListener('click', () => expoCall({mode: b.dataset.m})));
+E.expoPanel.querySelectorAll('.stp .iconbtn').forEach(b => b.addEventListener('click', () => expoCall({step: b.closest('.stp').dataset.k, direction: +b.dataset.d})));
+E.irisOpen.addEventListener('click', () => expoCall({iris_open: true}));
+function loadExpo(){ expoCall(null); }
+
+/* overexposure: share of pure-white pixels in the whole image */
+const clC = document.createElement('canvas'); clC.width = 160; clC.height = 90;
+const clX = clC.getContext('2d', {willReadFrequently: true});
+setInterval(() => {
+  const v = E.video;
+  if (!S.pc || !v.videoWidth || document.hidden){ E.clipChip.hidden = true; return; }
+  try { clX.drawImage(v, 0, 0, 160, 90); } catch { return; }
+  const d = clX.getImageData(0, 0, 160, 90).data; let n = 0;
+  for (let j = 0; j < d.length; j += 4) if (d[j] > 248 && d[j + 1] > 248 && d[j + 2] > 248) n++;
+  const p = n / (160 * 90) * 100;
+  E.clipChip.hidden = p < 0.5;
+  E.clipChip.textContent = `Overexposed ${p < 10 ? p.toFixed(1) : Math.round(p)} %`;
+}, 400);
+
+/* ---------- mouse wheel: vertical tilts, horizontal pans ---------- */
+// Every notch adds a burst of speed that decays on its own; the engine turns that
+// into the same smooth curves as the joystick.
+const WHEEL = {fine: {gain: 0.07, max: 0.3}, medium: {gain: 0.13, max: 0.55}, coarse: {gain: 0.25, max: 1}};
+const WHEEL_TAU = 0.3;  // decay time in seconds
+let wheelTimer = null, wheelLast = 0;
+function wheelTick(){
+  const now = performance.now(), dt = (now - wheelLast) / 1000; wheelLast = now;
+  const f = Math.exp(-dt / WHEEL_TAU);
+  IN.wheel.x *= f; IN.wheel.y *= f; IN.wheel.z *= f;
+  if (Math.abs(IN.wheel.x) < 0.02) IN.wheel.x = 0;
+  if (Math.abs(IN.wheel.y) < 0.02) IN.wheel.y = 0;
+  if (Math.abs(IN.wheel.z) < 0.02) IN.wheel.z = 0;
+  if (!IN.wheel.x && !IN.wheel.y && !IN.wheel.z){ clearInterval(wheelTimer); wheelTimer = null; }
+  joyPush();
+}
+document.addEventListener('wheel', (e) => {
+  if (settingsOpen() || !S.ptzOk) return;
+  const mode = WHEEL[E.wheelMode.value]; if (!mode) return;
+  if (e.target.closest && e.target.closest('input, select, textarea')) return;
+  const sc = e.target.closest && e.target.closest('.controls');   // (only when it has to scroll)
+  if (sc && sc.scrollHeight > sc.clientHeight + 2) return;   // the column scrolls itself (small screen)
+  e.preventDefault();
+  const unit = e.deltaMode === 1 ? 3 : (e.deltaMode === 2 ? 0.3 : 100);   // lines / pages / pixels -> notches
+  let nx = e.deltaX / unit, ny = e.deltaY / unit;
+  if (e.shiftKey && !nx){ nx = ny; ny = 0; }
+  const lim = (v) => Math.max(-mode.max, Math.min(mode.max, v));
+  if (e.ctrlKey){   // Ctrl + wheel zooms the camera (instead of the browser page): up = tele
+    IN.wheel.z = lim(IN.wheel.z - (ny || nx) * mode.gain);
+    aimRun++;
+    if (!wheelTimer){ wheelLast = performance.now(); wheelTimer = setInterval(wheelTick, 60); }
+    joyPush();
+    return;
+  }
+  IN.wheel.x = lim(IN.wheel.x + nx * mode.gain * (E.invPan.checked ? -1 : 1));
+  IN.wheel.y = lim(IN.wheel.y - ny * mode.gain * (E.invTilt.checked ? -1 : 1));
+  aimRun++;   // cancel a running click correction
+  if (!wheelTimer){ wheelLast = performance.now(); wheelTimer = setInterval(wheelTick, 60); }
+  joyPush();
+}, {passive: false});
+const wm = store.get('wheel-mode', 'medium'); E.wheelMode.value = (WHEEL[wm] || wm === 'off') ? wm : 'medium';
+E.wheelMode.addEventListener('change', () => store.set('wheel-mode', E.wheelMode.value));
+
+/* ---------- hold the middle mouse button = joystick ---------- */
+// Pressing sets the centre, dragging gives direction and speed, releasing brakes smoothly.
+const MID_R = 100, MID_C = 400;   // canvas at double resolution (sharp)
+let midId = null, midO = null, midEl = null;
+// Pie slice: the angle range in which the camera drives exactly the same at the current deflection
+// (same level pair). When the pointer leaves the slice, the camera changes direction.
+let midRaf = 0, midLast = null;
+function midCell(dx, dy){ midLast = [dx, dy]; if (!midRaf) midRaf = requestAnimationFrame(midDraw); }
+function midDraw(){
+  midRaf = 0; if (!midEl || !midLast) return;
+  const [dx, dy] = midLast, t = tables();
+  const cv = midEl.querySelector('canvas'), x = cv.getContext('2d'), C = MID_C / 2;
+  x.clearRect(0, 0, MID_C, MID_C);
+  const r = Math.min(MID_R, Math.hypot(dx, dy));
+  const at = (ang) => { const [u, w] = stick(Math.cos(ang) * r, -Math.sin(ang) * r, MID_R, DEAD * 1.5); return quantPair(u, w, t.pan, t.tilt); };
+  const a0 = Math.atan2(-dy, dx), pair = at(a0);
+  if (!pair[0] && !pair[1]) return;
+  const same = (q) => q[0] === pair[0] && q[1] === pair[1];
+  const STEP_A = Math.PI / 360;   // 0.5°
+  let lo = a0, hi = a0;
+  for (let i = 0; i < 720 && same(at(lo - STEP_A)); i++) lo -= STEP_A;
+  for (let i = 0; i < 720 && same(at(hi + STEP_A)); i++) hi += STEP_A;
+  const k = MID_C / (2 * MID_R);   // canvas -> circle
+  x.beginPath(); x.moveTo(C, C);
+  x.arc(C, C, MID_R * k, -hi, -lo);   // canvas y points down, so angles are mirrored
+  x.closePath();
+  x.fillStyle = 'rgba(255, 214, 10, 0.26)'; x.fill();
+  x.strokeStyle = 'rgba(255, 214, 10, 0.55)'; x.lineWidth = 1.5; x.stroke();
+}
+function midEnd(){
+  if (midId === null) return;
+  midId = null; IN.mid.x = IN.mid.y = 0; joyPush();
+  document.body.classList.remove('midgrab');
+  if (midEl){ midEl.remove(); midEl = null; }
+}
+document.addEventListener('pointerdown', (e) => {
+  if (e.button !== 1 || e.pointerType !== 'mouse') return;
+  if (settingsOpen() || !S.ptzOk) return;
+  e.preventDefault();                      // no auto-scroll, no link in a new tab
+  midId = e.pointerId; midO = [e.clientX, e.clientY];
+  try { document.body.setPointerCapture(midId); } catch {}
+  aimRun++;
+  midEl = document.createElement('div'); midEl.className = 'midjoy'; midEl.innerHTML = `<canvas width="${MID_C}" height="${MID_C}"></canvas><i></i>`;
+  midEl.style.left = `${midO[0]}px`; midEl.style.top = `${midO[1]}px`;
+  document.body.append(midEl); document.body.classList.add('midgrab');
+}, true);
+document.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== midId || midId === null) return;
+  let dx = e.clientX - midO[0], dy = e.clientY - midO[1];
+  const len = Math.hypot(dx, dy);
+  if (len > MID_R){ dx *= MID_R / len; dy *= MID_R / len; }
+  midEl.querySelector('i').style.transform = `translate(${dx}px, ${dy}px)`;
+  const [nx, ny] = stick(dx, dy, MID_R, DEAD * 1.5);
+  IN.mid.x = nx * (E.invPan.checked ? -1 : 1); IN.mid.y = ny * (E.invTilt.checked ? -1 : 1);
+  midCell(dx, dy);
+  joyPush();
+}, true);
+document.addEventListener('pointerup', (e) => { if (e.pointerId === midId && e.button === 1) midEnd(); }, true);
+document.addEventListener('pointercancel', (e) => { if (e.pointerId === midId) midEnd(); }, true);
+document.addEventListener('auxclick', (e) => { if (e.button === 1 && !settingsOpen()) e.preventDefault(); }, true);
+document.addEventListener('mousedown', (e) => { if (e.button === 1 && !settingsOpen()) e.preventDefault(); }, true);
+
+/* ---------- motion calibration ---------- */
+let calArm = null;
+function renderCal(s){
+  S.cal = s;
+  E.calFill.style.width = `${Math.round((s.running || s.result ? s.progress : 0) * 100)}%`;
+  E.calBtn.textContent = s.running ? 'Cancel measurement' : 'Measure motion';
+  E.calBtn.classList.remove('primary');
+  if (s.running) E.calInfo.textContent = s.step;
+  else if (s.result) E.calInfo.textContent = `${s.error ? s.error + ' · ' : 'Done · '}${s.result.recording || '–'} and ${s.result.log} are in ${s.result.folder}`;
+  else E.calInfo.textContent = s.error || '';
+}
+async function pollCal(){
+  try { const s = await api('/api/calibration'); const was = S.cal && S.cal.running; renderCal(s); if (was && !s.running) log(`Motion measurement ${s.error || 'done'}: ${s.result ? s.result.recording + ' + ' + s.result.log : ''}`, s.error ? 'warn' : 'ok'); if (s.running) setTimeout(pollCal, 700); }
+  catch {}
+}
+E.calBtn.addEventListener('click', async () => {
+  if (S.cal && S.cal.running){ try { renderCal(await api('/api/calibration/stop', {})); } catch (e) { log(e.message, 'err'); } return; }
+  if (!calArm){
+    E.calBtn.textContent = 'Sure? The camera moves on its own'; E.calBtn.classList.add('primary');
+    calArm = setTimeout(() => { calArm = null; if (S.cal) renderCal(S.cal); else { E.calBtn.textContent = 'Measure motion'; E.calBtn.classList.remove('primary'); } }, 4000);
+    return;
+  }
+  clearTimeout(calArm); calArm = null;
+  try { renderCal(await api('/api/calibration/start', {})); log('Motion measurement started.', 'ok'); pollCal(); pollRec(); }
+  catch (e) { log(e.message, 'err'); E.calBtn.textContent = 'Measure motion'; E.calBtn.classList.remove('primary'); }
+});
+
+/* ---------- start ---------- */
+E.speed.value = store.get('ptz-speed', 3); E.zspeed.value = store.get('ptz-zspeed', 3); speedLbl();
+E.zmode.value = store.get('ptz-zmode', 'cont') === 'step' ? 'step' : 'cont';
+E.invPan.checked = !!store.get('ptz-invPan', false); E.invTilt.checked = !!store.get('ptz-invTilt', false);
+S.ovl = Math.min(OVL.length - 1, Math.max(0, +store.get('view-ovl', 0) || 0)); applyOvl();
+S.rot = !!store.get('view-rot', false); applyRot();
+applyListen();
+fitControls();
+renderPTZ();
+
+if (location.protocol === 'file:'){
+  banner('This page only works through the PTZ Desk server. Run start.bat; the page then opens at http://localhost:8765 by itself.', true);
+  setStatus('err', 'Not opened through the server');
+  E.vStart.disabled = E.emptyStart.disabled = E.reconnect.disabled = true;
+} else {
+  loadStatus().then(() => { if (!E.vStart.disabled && store.get('autostart', true)) startVideo(); });
+}
+
+window.addEventListener('pagehide', () => { if (anyInput() || (S.motion && S.motion.moving)) fetch('/api/joy/halt', {method: 'POST', keepalive: true, headers: {'Content-Type': 'application/json', 'X-PTZ-Desk': '1'}, body: '{}'}).catch(() => {}); });
+})();
+</script>
+</body>
+</html>

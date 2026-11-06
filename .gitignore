@@ -1,0 +1,41 @@
+# Credentials – never in the repository (template: config.example.ini)
+config.ini
+kamera.ini
+
+# Rewritten by the server on every start
+go2rtc.yaml
+
+# Third-party binaries, downloaded separately (see README)
+go2rtc
+go2rtc.exe
+ffmpeg
+ffmpeg.exe
+
+# Local copies of the camera's own web interface code (vendor copyright)
+app.*.js
+about.*.js
+
+# Personal state written by the server
+curves.json
+presets.json
+glide.json
+visca_speeds.json
+click_scale.json
+audio.json
+visca_check.json
+image_settings.json
+*.json.tmp
+# State files of earlier (German) versions
+kurven.json
+positionen.json
+fahrten.json
+visca_tempi.json
+klick.json
+visca_pruefung.json
+bild_einstellungen.json
+
+# Python, recordings
+__pycache__/
+*.pyc
+*.mp4
+*.webm

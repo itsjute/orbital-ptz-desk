@@ -1,0 +1,4 @@
+# The server itself needs only the Python standard library.
+# These two packages are optional and only used for post stabilization (Recordings view):
+numpy
+opencv-python-headless
