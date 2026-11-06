@@ -5,3 +5,8 @@
 *.html text eol=lf
 *.md text eol=lf
 *.exe binary
+*.iss text eol=crlf
+*.spec text eol=lf
+*.yml text eol=lf
+*.ico binary
+*.png binary

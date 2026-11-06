@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='#F2B055'/%3E%3Cstop offset='1' stop-color='#C77412'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='96' height='96' rx='22' fill='url%28#g%29'/%3E%3Cg transform='translate%2817.0 17.0%29 scale%282.7499999999999996%29' fill='none' stroke='#1A1206' stroke-width='2.0' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-1.708.134l-2.124-2.97'/%3E%3Cpath d='M17.106 9.053a1 1 0 0 1 .447 1.341l-3.106 6.211a1 1 0 0 1-1.342.447L3.61 12.3a2.92 2.92 0 0 1-1.3-3.91L3.69 5.6a2.92 2.92 0 0 1 3.92-1.3z'/%3E%3Cpath d='M2 19h3.76a2 2 0 0 0 1.8-1.1L9 15'/%3E%3Cpath d='M2 21v-4'/%3E%3Cpath d='M7 9h.01'/%3E%3C/g%3E%3C/svg%3E">
 <title>PTZ Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -117,6 +118,23 @@ kbd{font:500 11.5px var(--f-mono);border:1px solid var(--line);border-bottom-wid
 .ctl-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
 input[type="range"]{width:100%;accent-color:var(--accent);margin:0}
 .opts{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px}
+input:not([type]),input[type="text"],input[type="password"],input[type="number"]{width:100%;min-width:0;padding:7px 9px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2)}
+input[type="number"]{font-variant-numeric:tabular-nums}
+.formgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px 14px;margin-top:2px}
+.formgrid .wide{grid-column:1/-1}
+details>.formgrid{margin-top:12px}
+.inrow{display:flex;gap:8px}
+.inrow input{flex:1}
+.welcome{border:1px solid var(--accent);border-radius:6px;padding:10px 12px;background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--fg);font-size:14px;margin:0}
+.console{margin:0;height:clamp(220px,52vh,520px);overflow:auto;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:#0B0E12;color:#C9D1DB;font:400 12px/1.5 var(--f-mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.console div.warn{color:#E3B341}
+.console div.err{color:#FF8A80}
+.console:empty::before{content:"No messages yet.";color:#6E7681}
+.confirm{max-width:440px;padding:18px 20px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--fg);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.confirm::backdrop{background:rgba(5,8,12,.55)}
+.confirm h2{font:600 18px var(--f-display);margin:0 0 8px}
+.confirm .btns{justify-content:flex-end;margin-top:16px}
+.modal-head small{color:var(--muted);font:400 13px var(--f-mono)}
 .opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
 .opts input{accent-color:var(--accent)}
 .presets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
@@ -481,7 +499,7 @@ body.midgrab, body.midgrab *{cursor:move!important}
 
 <dialog class="modal" id="settings" aria-labelledby="settingsTitle">
   <div class="modal-head">
-    <h2 id="settingsTitle">Settings</h2>
+    <h2 id="settingsTitle">Settings</h2><small id="appVer"></small>
     <button class="iconbtn" id="closeSettings" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
   </div>
   <div class="modal-body">
@@ -494,6 +512,7 @@ body.midgrab, body.midgrab *{cursor:move!important}
       <button type="button" role="tab" data-tab="recordings" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></svg>Recordings</button>
       <button type="button" role="tab" data-tab="calibration" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>Calibration</button>
       <button type="button" role="tab" data-tab="diagnostics" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>Diagnostics</button>
+      <button type="button" role="tab" data-tab="log" aria-selected="false"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19h8"/><path d="m4 17 6-6-6-6"/></svg>Log</button>
     </nav>
     <div class="panes">
       <div class="pane" data-pane="camera" role="tabpanel">
@@ -522,6 +541,35 @@ body.midgrab, body.midgrab *{cursor:move!important}
           <p class="note" id="connNote" hidden></p>
           <p class="note"><a id="webUi" href="#" target="_blank" rel="noopener">Camera web interface</a> for picture settings, tracking and network.</p>
         </div>
+      </section>
+      <section class="panel">
+        <h2>Camera setup</h2>
+        <form class="stack" id="cfgForm" autocomplete="off" novalidate>
+          <p class="welcome" id="cfgWelcome" hidden>Welcome to PTZ Desk. Enter your camera's address and login (the same as for its web interface) and press <b>Save and connect</b>. Everything else can usually stay as it is.</p>
+          <div class="formgrid">
+            <div class="field"><label for="cfIp">IP address</label><input id="cfIp" spellcheck="false" placeholder="192.168.1.100"></div>
+            <div class="field"><label for="cfUser">User</label><input id="cfUser" spellcheck="false" autocomplete="off"></div>
+            <div class="field"><label for="cfPw">Password</label><input id="cfPw" type="password" autocomplete="new-password"></div>
+          </div>
+          <details id="cfAdv">
+            <summary>Streams, ports and network</summary>
+            <div class="formgrid">
+              <div class="field wide"><label for="cfMain">RTSP main stream</label><input id="cfMain" spellcheck="false"></div>
+              <div class="field wide"><label for="cfSub">RTSP sub stream</label><input id="cfSub" spellcheck="false"></div>
+              <div class="field"><label for="cfCtl">Control</label><select id="cfCtl"><option value="auto">Auto (web API, else ONVIF)</option><option value="web">Camera web API</option><option value="onvif">ONVIF</option></select></div>
+              <div class="field"><label for="cfOnvif">ONVIF port</label><input id="cfOnvif" type="number" min="1" max="65535"></div>
+              <div class="field"><label for="cfWeb">Web interface port</label><input id="cfWeb" type="number" min="1" max="65535"></div>
+              <div class="field"><label for="cfPort">Port of this page</label><input id="cfPort" type="number" min="1" max="65535"></div>
+              <label class="opts wide"><input type="checkbox" id="cfLan"> Also reachable from other devices on the network, e.g. a tablet (takes effect after a restart)</label>
+            </div>
+          </details>
+          <div class="btns">
+            <button class="btn primary" id="cfSave" type="submit">Save and connect</button>
+            <button class="btn" id="cfRevert" type="button">Undo changes</button>
+            <span class="note" id="cfNote"></span>
+          </div>
+          <p class="note" id="cfFile"></p>
+        </form>
       </section>
       </div>
       <div class="pane" data-pane="audio" role="tabpanel">
@@ -650,6 +698,21 @@ body.midgrab, body.midgrab *{cursor:move!important}
       </div>
       <div class="pane" data-pane="recordings" role="tabpanel">
     <section class="panel">
+      <h2>Recording</h2>
+      <form class="stack" id="recForm" autocomplete="off" novalidate>
+        <div class="formgrid">
+          <div class="field wide"><label for="rfFolder">Folder for recordings and stills</label>
+            <div class="inrow"><input id="rfFolder" spellcheck="false"><button class="btn ib" id="rfBrowse" type="button" hidden><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>Browse …</button></div></div>
+          <div class="field"><label for="rfSplit">New file every … minutes</label><input id="rfSplit" type="number" min="0" max="1440" title="0 = one continuous file"></div>
+          <div class="field"><label for="rfStream">Recorded stream</label><select id="rfStream"><option value="main">Main stream (full resolution)</option><option value="sub">Sub stream</option></select></div>
+        </div>
+        <div class="btns">
+          <button class="btn primary" id="rfSave" type="submit">Save</button>
+          <span class="note" id="rfNote"></span>
+        </div>
+      </form>
+    </section>
+    <section class="panel">
       <h2>Recordings <small id="pfFolder"></small></h2>
       <div class="stack">
         <p class="note" id="ffInfo">Checking ffmpeg …</p>
@@ -710,14 +773,37 @@ body.midgrab, body.midgrab *{cursor:move!important}
             <summary>Show raw data</summary>
             <textarea id="report" readonly aria-label="Report as JSON"></textarea>
           </details>
-          <div class="field">
-            <span class="lbl">Log</span>
-            <ul class="log" id="log" aria-live="polite"></ul>
-          </div>
         </div>
       </section>
       </div>
+      <div class="pane" data-pane="log" role="tabpanel">
+      <section class="panel">
+        <h2>Server log</h2>
+        <div class="stack">
+          <p class="note">What the PTZ Desk server reports – camera, video service (go2rtc), recordings. Also saved to <code>ptz-desk.log</code> in the data folder.</p>
+          <div class="console" id="srvLog" role="log" aria-live="off" tabindex="0"></div>
+          <div class="btns">
+            <button class="btn small ib" id="logCopy" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>Copy</button>
+            <button class="btn small ib" id="logFolder" type="button"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>Open data folder</button>
+            <label class="opts"><input type="checkbox" id="logFollow" checked> Follow new messages</label>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Page events</h2>
+        <ul class="log" id="log" aria-live="polite"></ul>
+      </section>
+      </div>
     </div>
+  </div>
+</dialog>
+
+<dialog class="confirm" id="quitDlg" aria-labelledby="quitTitle">
+  <h2 id="quitTitle">A recording is running</h2>
+  <p class="note">Closing PTZ Desk stops the recording. Everything recorded so far is kept.</p>
+  <div class="btns">
+    <button class="btn" id="quitCancel" type="button">Keep recording</button>
+    <button class="btn primary" id="quitOk" type="button">Stop and quit</button>
   </div>
 </dialog>
 
@@ -730,6 +816,12 @@ function icon(n){ return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke
 'use strict';
 const $ = (s) => document.querySelector(s);
 const E = {
+  cfgForm:$('#cfgForm'), cfgWelcome:$('#cfgWelcome'), cfIp:$('#cfIp'), cfUser:$('#cfUser'), cfPw:$('#cfPw'), cfAdv:$('#cfAdv'),
+  cfMain:$('#cfMain'), cfSub:$('#cfSub'), cfCtl:$('#cfCtl'), cfOnvif:$('#cfOnvif'), cfWeb:$('#cfWeb'), cfPort:$('#cfPort'), cfLan:$('#cfLan'),
+  cfSave:$('#cfSave'), cfRevert:$('#cfRevert'), cfNote:$('#cfNote'), cfFile:$('#cfFile'),
+  recForm:$('#recForm'), rfFolder:$('#rfFolder'), rfBrowse:$('#rfBrowse'), rfSplit:$('#rfSplit'), rfStream:$('#rfStream'), rfSave:$('#rfSave'), rfNote:$('#rfNote'),
+  srvLog:$('#srvLog'), logCopy:$('#logCopy'), logFolder:$('#logFolder'), logFollow:$('#logFollow'), appVer:$('#appVer'),
+  quitDlg:$('#quitDlg'), quitOk:$('#quitOk'), quitCancel:$('#quitCancel'),
   video:$('#video'), stage:$('#stage'), overlay:$('#overlay'), hud:$('#hud'),
   recPill:$('#recPill'), recDir:$('#recDir'), empty:$('#empty'), emptyTitle:$('#emptyTitle'), emptyText:$('#emptyText'), emptyStart:$('#emptyStart'),
   statusDot:$('#statusDot'), statusText:$('#statusText'), banner:$('#envBanner'),
@@ -790,13 +882,13 @@ function setStatus(kind, text){ E.statusDot.dataset.s = kind; E.statusText.textC
 function banner(text, err){ E.banner.textContent = text; E.banner.classList.toggle('err', !!err); E.banner.hidden = !text; }
 function note(text, kind){ E.connNote.textContent = text || ''; E.connNote.className = 'note' + (kind ? ' ' + kind : ''); E.connNote.hidden = !text; }
 const sleep = (ms) => new Promise(res => setTimeout(res, ms));
-const settingsOpen = () => E.dlg.open;
+const settingsOpen = () => E.dlg.open || E.quitDlg.open;
 
 async function api(path, body){
   const opt = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json', 'X-PTZ-Desk': '1'}, body: JSON.stringify(body)};
   let r;
   try { r = await fetch(path, opt); }
-  catch { throw new Error('PTZ Desk server not reachable. Is start.bat still running?'); }
+  catch { throw new Error('PTZ Desk server not reachable. Is PTZ Desk still running?'); }
   let data = null; try { data = await r.json(); } catch {}
   if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
   return data;
@@ -890,7 +982,7 @@ function renderConn(fatal){
   } else {
     E.dCam.dataset.s = S.ptzOk ? 'live' : 'err'; E.vCam.textContent = `${k.ip}`;
     let hint = o.error || 'No connection to the camera.';
-    if (!k.password_set) hint += ' No password is set in config.ini.';
+    if (!k.password_set) hint += ' No camera password set (Settings → Camera).';
     if (!S.ptzOk) note(hint, 'err');
   }
   const c = st.control || {kind: 'onvif'};
@@ -905,13 +997,13 @@ function renderConn(fatal){
   E.stream.textContent = '';
   const labels = {main: 'Main stream (full resolution)', sub: 'Sub stream (lower resolution)'};
   v.streams.forEach(s => E.stream.add(new Option(labels[s] || s, s)));
-  if (!v.streams.length) E.stream.add(new Option('No RTSP address in config.ini', ''));
+  if (!v.streams.length) E.stream.add(new Option('No RTSP address set', ''));
   const pref = store.get('stream', 'sub');
   E.stream.value = v.streams.includes(cur) ? cur : (v.streams.includes(pref) ? pref : (v.streams[0] || ''));
   E.vStart.disabled = E.emptyStart.disabled = !vidOk || !v.streams.length;
   if (!vidOk){
     E.emptyTitle.textContent = 'Video service is not running';
-    E.emptyText.textContent = /missing/.test(v.state) ? 'go2rtc is missing in the PTZ Desk folder. Put it there and restart start.bat.' : v.state;
+    E.emptyText.textContent = /missing/.test(v.state) ? 'go2rtc is missing next to PTZ Desk. Put it there and restart PTZ Desk.' : v.state;
   } else if (!S.pc){
     E.emptyTitle.textContent = 'No image yet'; E.emptyText.textContent = 'The image comes through the PTZ Desk server on this computer.';
   }
@@ -961,8 +1053,8 @@ async function startVideo(){
   } catch (e) {
     let msg = e.message;
     if (/codec/i.test(msg)) msg += ' – The camera probably sends H.265. Switch it to H.264 in its web interface under Video, or choose the sub stream.';
-    else if (/404|not found/i.test(msg)) msg += ' – Unknown stream. Check the RTSP addresses in config.ini.';
-    else if (/i\/o timeout|connection refused|dial tcp|EOF/i.test(msg)) msg += ' – go2rtc cannot reach the camera. Check the RTSP address in config.ini (Copy button in the camera web interface).';
+    else if (/404|not found/i.test(msg)) msg += ' – Unknown stream. Check the RTSP addresses under Settings → Camera.';
+    else if (/i\/o timeout|connection refused|dial tcp|EOF/i.test(msg)) msg += ' – go2rtc cannot reach the camera. Check the RTSP address under Settings → Camera (Copy button in the camera web interface).';
     log(msg, 'err'); stopVideo(); setStatus('err', 'Video failed');
     E.emptyTitle.textContent = 'Video could not be started'; E.emptyText.textContent = msg;
   }
@@ -1437,7 +1529,15 @@ E.snap.addEventListener('click', () => {
   const x = c.getContext('2d');
   if (S.rot){ x.translate(c.width, c.height); x.rotate(Math.PI); }
   x.drawImage(v, 0, 0);
-  c.toBlob(b => { if (b){ saveBlob(b, `ptz_${stamp()}.jpg`); log(`Still saved (${c.width} × ${c.height}).`, 'ok'); } }, 'image/jpeg', 0.92);
+  c.toBlob(async b => {
+    if (!b) return;
+    if (!appWin()){ saveBlob(b, `ptz_${stamp()}.jpg`); log(`Still saved (${c.width} × ${c.height}).`, 'ok'); return; }
+    try {   // in the app window: straight into the recording folder
+      const r = await fetch('/api/still', {method: 'POST', headers: {'Content-Type': 'image/jpeg', 'X-PTZ-Desk': '1'}, body: b});
+      const j = await r.json(); if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      log(`Still saved: ${j.file} (${c.width} × ${c.height}).`, 'ok'); showLast(`Still saved: ${j.file}`, 'ok');
+    } catch (e) { log(`Still not saved: ${e.message}`, 'err'); }
+  }, 'image/jpeg', 0.92);
 });
 /* recording runs in the server, not in the browser */
 const hms = (s) => [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60].map(n => String(n).padStart(2, '0')).join(':');
@@ -1481,8 +1581,10 @@ function applyRot(){ E.stage.classList.toggle('rot', S.rot); E.rot.setAttribute(
 E.rot.addEventListener('click', () => { S.rot = !S.rot; applyRot(); store.set('view-rot', S.rot); });
 E.fs.addEventListener('click', () => {
   if (document.fullscreenElement){ document.exitFullscreen().catch(() => {}); return; }
-  if (E.stage.requestFullscreen) E.stage.requestFullscreen().catch(() => log('Full screen not possible.', 'warn'));
+  if (E.stage.requestFullscreen) E.stage.requestFullscreen().then(() => { if (appWin()) window.pywebview.api.fullscreen(true); })
+    .catch(() => log('Full screen not possible.', 'warn'));
 });
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && appWin()) window.pywebview.api.fullscreen(false); });
 
 /* ---------- connection controls ---------- */
 E.vStart.addEventListener('click', startVideo);
@@ -1514,15 +1616,18 @@ async function loadPost(){
 function renderGl(){
   const g = S.gl; if (!g) return;
   const pk = g.packages || {};
-  E.glDeps.hidden = pk.ok || !g.ffmpeg.ok; E.glDeps.disabled = !!pk.running;
+  const frozen = !!(S.status && S.status.app && S.status.app.frozen);   // installed app: components come from the installer
+  E.glDeps.hidden = pk.ok || !g.ffmpeg.ok || frozen; E.glDeps.disabled = !!pk.running;
   E.glDeps.textContent = pk.running ? 'Installing … (takes about a minute)' : 'Install numpy and OpenCV';
   if (g.ready){ E.ffInfo.textContent = `Ready · ffmpeg: ${g.ffmpeg.info} · ${pk.info}`; E.ffInfo.className = 'note'; }
   else if (!g.ffmpeg.ok){
     E.ffInfo.className = 'note warn';
-    E.ffInfo.textContent = `Stabilizing needs ffmpeg (${g.ffmpeg.info}). Once, in a command prompt: winget install Gyan.FFmpeg – then "Check again". Alternatively put ffmpeg.exe into the PTZ Desk folder.`;
+    E.ffInfo.textContent = frozen ? 'Stabilizing needs FFmpeg. Run the PTZ Desk installer again and tick the “FFmpeg” and “Stabilization” components.'
+      : `Stabilizing needs ffmpeg (${g.ffmpeg.info}). Once, in a command prompt: winget install Gyan.FFmpeg – then "Check again". Alternatively put ffmpeg.exe into the PTZ Desk folder.`;
   } else {
     E.ffInfo.className = pk.error ? 'note err' : 'note warn';
-    E.ffInfo.textContent = pk.error ? `Installation: ${pk.error}` : 'ffmpeg is there. The Python packages numpy and OpenCV are still missing (about 60 MB together, installed with pip).';
+    E.ffInfo.textContent = frozen ? 'Stabilizing is not installed. Run the PTZ Desk installer again and tick the “Stabilization” component.'
+      : pk.error ? `Installation: ${pk.error}` : 'ffmpeg is there. The Python packages numpy and OpenCV are still missing (about 60 MB together, installed with pip).';
   }
   if (pk.running) setTimeout(() => api('/api/stabilize').then(x => { S.gl = x; renderPost(); }).catch(() => {}), 2000);
   E.glFill.style.width = `${Math.round((g.running || g.result ? g.progress : 0) * 100)}%`;
@@ -1591,6 +1696,8 @@ function showTab(t){
   if (t === 'motion') requestAnimationFrame(() => drawCurves());
   if (t === 'recordings') loadPost();
   if (t === 'audio') loadAudio();
+  if (t === 'camera' || t === 'recordings') loadConfig();
+  if (t === 'log') pollLog();
 }
 function openSettings(t){
   keys.clear(); stopMove();
@@ -1601,6 +1708,125 @@ TABS.forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
 E.openSettings.addEventListener('click', () => openSettings());
 E.closeSettings.addEventListener('click', () => E.dlg.close());
 E.dlg.addEventListener('click', (e) => { if (e.target === E.dlg) E.dlg.close(); });   // click on the backdrop
+
+
+/* ---------- app window (PTZ Desk.exe / app.py) ---------- */
+const appWin = () => !!(window.pywebview && window.pywebview.api);
+function onAppReady(){
+  E.rfBrowse.hidden = !appWin();
+}
+window.addEventListener('pywebviewready', onAppReady);
+window.ptzDeskCloseRequest = () => { if (!E.quitDlg.open) E.quitDlg.showModal(); };
+E.quitCancel.addEventListener('click', () => E.quitDlg.close());
+E.quitOk.addEventListener('click', () => { E.quitDlg.close(); if (appWin()) window.pywebview.api.quit(); });
+
+/* ---------- camera and recording setup (config.ini) ---------- */
+function setNote(el, text, kind){ el.textContent = text || ''; el.className = 'note' + (kind ? ' ' + kind : ''); }
+function defaultRtsp(ip, which){ return ip ? `rtsp://${ip}:554/live/${which === 'main' ? 'av0' : 'av1'}` : ''; }
+function fillConfig(c){
+  S.cfg = c; const k = c.camera, r = c.recording;
+  E.cfIp.value = k.ip; E.cfUser.value = k.user; E.cfPw.value = '';
+  E.cfPw.placeholder = k.password_set ? 'unchanged' : 'not set';
+  E.cfMain.value = k.rtsp_main; E.cfSub.value = k.rtsp_sub; rtspHints();
+  E.cfCtl.value = k.control; E.cfOnvif.value = k.onvif_port; E.cfWeb.value = k.web_port;
+  E.cfPort.value = c.server.port; E.cfLan.checked = !c.server.local_only;
+  E.cfgWelcome.hidden = c.configured;
+  E.cfSave.textContent = c.configured ? 'Save and reconnect' : 'Save and connect';
+  E.cfFile.textContent = `Stored in ${c.file}`;
+  E.rfFolder.value = r.folder; E.rfFolder.placeholder = c.defaults.rec_dir;
+  E.rfSplit.value = r.split_minutes; E.rfStream.value = r.stream;
+  S.cfgIp = k.ip;
+}
+async function loadConfig(){
+  try { fillConfig(await api('/api/config')); } catch (e) { setNote(E.cfNote, e.message, 'err'); }
+}
+function rtspHints(){
+  const ip = E.cfIp.value.trim();
+  E.cfMain.placeholder = defaultRtsp(ip, 'main') || 'rtsp://…'; E.cfSub.placeholder = defaultRtsp(ip, 'sub') || 'rtsp://…';
+}
+E.cfIp.addEventListener('input', () => {
+  // keep the RTSP addresses pointing at the camera when its address changes
+  const old = S.cfgIp, ip = E.cfIp.value.trim();
+  if (old && ip) [E.cfMain, E.cfSub].forEach(f => { if (f.value.includes('@' + old) || f.value.includes('//' + old)) f.value = f.value.split(old).join(ip); });
+  S.cfgIp = ip; rtspHints();
+});
+async function saveConfig(body, noteEl){
+  const res = await api('/api/config', body);
+  fillConfig(res.config);
+  return res;
+}
+E.cfgForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!E.cfIp.value.trim()){ setNote(E.cfNote, 'Enter the camera\'s IP address.', 'err'); E.cfIp.focus(); return; }
+  const first = !(S.cfg && S.cfg.configured);
+  E.cfSave.disabled = true; setNote(E.cfNote, 'Saving …');
+  try {
+    const res = await saveConfig({
+      camera: {ip: E.cfIp.value.trim(), user: E.cfUser.value.trim(), password: E.cfPw.value ? E.cfPw.value : null,
+               rtsp_main: E.cfMain.value.trim(), rtsp_sub: E.cfSub.value.trim(), control: E.cfCtl.value,
+               onvif_port: +E.cfOnvif.value || 8080, web_port: +E.cfWeb.value || 80},
+      server: {port: +E.cfPort.value || 8765, local_only: !E.cfLan.checked}});
+    setNote(E.cfNote, res.restart_required ? 'Saved. The page port/network setting takes effect after restarting PTZ Desk.' : 'Saved – connecting …', res.restart_required ? 'warn' : '');
+    log('Camera settings saved.', 'ok');
+    await sleep(1500);
+    for (let i = 0; i < 12; i++){       // the server reconnects in the background
+      await loadStatus();
+      if (S.ptzOk && videoOk(S.status)) break;
+      await sleep(1000);
+    }
+    if (!res.restart_required) setNote(E.cfNote, S.ptzOk ? 'Saved and connected.' : 'Saved, but the camera does not answer yet – see the Log tab.', S.ptzOk ? '' : 'warn');
+    if ((first || !S.pc) && !E.vStart.disabled) startVideo();
+  } catch (err) { setNote(E.cfNote, err.message, 'err'); }
+  finally { E.cfSave.disabled = false; }
+});
+E.cfRevert.addEventListener('click', () => { setNote(E.cfNote, ''); loadConfig(); });
+E.recForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  E.rfSave.disabled = true;
+  try {
+    await saveConfig({recording: {folder: E.rfFolder.value.trim(), split_minutes: Math.max(0, Math.round(+E.rfSplit.value || 0)), stream: E.rfStream.value}});
+    setNote(E.rfNote, 'Saved – applies to the next recording.'); pollRec();
+  } catch (err) { setNote(E.rfNote, err.message, 'err'); }
+  finally { E.rfSave.disabled = false; }
+});
+E.rfBrowse.addEventListener('click', async () => {
+  if (!appWin()) return;
+  try {
+    const f = await window.pywebview.api.pick_folder(E.rfFolder.value.trim() || E.rfFolder.placeholder);
+    if (f){ E.rfFolder.value = f; setNote(E.rfNote, 'Press Save to use this folder.'); }
+  } catch (err) { setNote(E.rfNote, String(err), 'err'); }
+});
+
+/* ---------- server log ---------- */
+S.logSeq = 0; S.logBusy = false;
+const LOG_ERR = /error|failed|exited|not reachable|refused|traceback|exception/i, LOG_WARN = /note:|warn|missing|no word/i;
+async function pollLog(){
+  if (S.logBusy) return;
+  S.logBusy = true;
+  try {
+    while (E.dlg.open && E.dlg.querySelector('.pane.on')?.dataset.pane === 'log'){
+      try {
+        const r = await api('/api/log?since=' + S.logSeq);
+        if (r.next < S.logSeq){ E.srvLog.textContent = ''; S.logSeq = 0; continue; }   // server restarted
+        if (r.lines.length){
+          const el = E.srvLog, atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 30, frag = document.createDocumentFragment();
+          r.lines.forEach(([, t]) => { const d = document.createElement('div'); d.textContent = t; const m = t.slice(9);
+            if (LOG_ERR.test(m)) d.className = 'err'; else if (LOG_WARN.test(m)) d.className = 'warn'; frag.append(d); });
+          el.append(frag);
+          while (el.childElementCount > 3000) el.firstChild.remove();
+          if (E.logFollow.checked && (atEnd || S.logSeq === 0)) el.scrollTop = el.scrollHeight;
+        }
+        S.logSeq = r.next;
+      } catch {}
+      await sleep(1000);
+    }
+  } finally { S.logBusy = false; }
+}
+E.logCopy.addEventListener('click', () => {
+  const t = [...E.srvLog.children].map(d => d.textContent).join('\n');
+  try { navigator.clipboard.writeText(t).then(() => log('Server log copied.', 'ok'), () => log('Copying not possible.', 'warn')); } catch { log('Copying not possible.', 'warn'); }
+});
+E.logFolder.addEventListener('click', async () => { try { await api('/api/log/open', {}); } catch (e) { log(e.message, 'err'); } });
 
 /* ---------- audio source ---------- */
 function renderAudio(){
@@ -2092,11 +2318,25 @@ fitControls();
 renderPTZ();
 
 if (location.protocol === 'file:'){
-  banner('This page only works through the PTZ Desk server. Run start.bat; the page then opens at http://localhost:8765 by itself.', true);
+  banner('This page only works through the PTZ Desk server. Start PTZ Desk; the page then opens by itself.', true);
   setStatus('err', 'Not opened through the server');
   E.vStart.disabled = E.emptyStart.disabled = E.reconnect.disabled = true;
 } else {
-  loadStatus().then(() => { if (!E.vStart.disabled && store.get('autostart', true)) startVideo(); });
+  (async () => {
+    // right after starting, the server still brings up the video service and the camera
+    for (let i = 0; i < 60; i++){
+      let st = null; try { st = await api('/api/status'); } catch { break; }
+      if (!st.app || !st.app.booting) break;
+      setStatus('busy', 'Starting …'); await sleep(400);
+    }
+    await loadStatus();
+    const a = S.status && S.status.app;
+    if (a){
+      E.appVer.textContent = a.version === 'source' ? 'from source' : 'v' + a.version.replace(/^v/, '');
+      if (!a.configured){ openSettings('camera'); setStatus('err', 'No camera set up'); setTimeout(() => { E.cfIp.focus(); E.cfIp.select(); }, 300); return; }
+    }
+    if (!E.vStart.disabled && store.get('autostart', true)) startVideo();
+  })();
 }
 
 window.addEventListener('pagehide', () => { if (anyInput() || (S.motion && S.motion.moving)) fetch('/api/joy/halt', {method: 'POST', keepalive: true, headers: {'Content-Type': 'application/json', 'X-PTZ-Desk': '1'}, body: '{}'}).catch(() => {}); });

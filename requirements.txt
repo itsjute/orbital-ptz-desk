@@ -1,4 +1,6 @@
 # The server itself needs only the Python standard library.
-# These two packages are optional and only used for post stabilization (Recordings view):
+# Optional: own app window for app.py
+pywebview
+# Optional: post stabilization (Recordings view); also needs ffmpeg on the PATH
 numpy
 opencv-python-headless

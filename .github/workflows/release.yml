@@ -1,0 +1,130 @@
+name: Windows installer
+
+# Builds "PTZ Desk.exe" with PyInstaller, adds go2rtc and FFmpeg and packs everything into an
+# Inno Setup installer with optional components. A tag like v1.2.0 publishes a GitHub release;
+# "Run workflow" (manual) only builds and keeps the installer as a workflow artifact.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Version
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $v = $env:GITHUB_REF_NAME -replace '^v', '' }
+          else { $v = "0.0.0-dev.$env:GITHUB_RUN_NUMBER" }
+          Set-Content -Path version.txt -Value $v -NoNewline -Encoding utf8NoBOM
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Version $v"
+
+      - name: Python packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller pywebview numpy opencv-python-headless
+          python -m pip list
+
+      - name: Build without stabilization packages
+        run: pyinstaller --noconfirm --clean --distpath build/base --workpath build/work-base packaging/ptz-desk.spec
+
+      - name: Build with stabilization packages
+        env:
+          PTZ_BUILD_FULL: "1"
+        run: pyinstaller --noconfirm --clean --distpath build/full --workpath build/work-full packaging/ptz-desk.spec
+
+      - name: Sort files into installer components
+        run: |
+          python packaging/split_components.py "build/full/PTZ Desk" "build/base/PTZ Desk" build/stage
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.md, README.md build/stage/main/
+
+      - name: Download go2rtc
+        run: |
+          Invoke-WebRequest https://github.com/AlexxIT/go2rtc/releases/latest/download/go2rtc_win64.zip -OutFile build/go2rtc.zip
+          Expand-Archive build/go2rtc.zip build/go2rtc -Force
+          Copy-Item build/go2rtc/go2rtc.exe build/stage/main/
+
+      - name: Download FFmpeg
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # newest release-branch build from BtbN/FFmpeg-Builds, master build as a fallback
+          $assets = (gh api repos/BtbN/FFmpeg-Builds/releases/latest | ConvertFrom-Json).assets.name
+          $pick = $assets | Where-Object { $_ -match '^ffmpeg-n(\d+)\.(\d+)-latest-win64-gpl-\d+\.\d+\.zip$' } |
+                  Sort-Object { [int]($_ -replace '^ffmpeg-n(\d+)\.(\d+).*', '$1') * 1000 + [int]($_ -replace '^ffmpeg-n(\d+)\.(\d+).*', '$2') } |
+                  Select-Object -Last 1
+          if (-not $pick) { $pick = 'ffmpeg-master-latest-win64-gpl.zip' }
+          Write-Host "Using $pick"
+          Invoke-WebRequest "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/$pick" -OutFile build/ffmpeg.zip
+          Expand-Archive build/ffmpeg.zip build/ffmpeg -Force
+          $bin = Get-ChildItem build/ffmpeg -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          $lic = Get-ChildItem build/ffmpeg -Recurse -Filter LICENSE.txt | Select-Object -First 1
+          New-Item -ItemType Directory -Force build/stage/ffmpeg/licenses | Out-Null
+          Copy-Item $bin.FullName build/stage/ffmpeg/
+          if ($lic) { Copy-Item $lic.FullName build/stage/ffmpeg/licenses/FFmpeg-LICENSE.txt }
+          "FFmpeg build $pick from https://github.com/BtbN/FFmpeg-Builds (source: https://ffmpeg.org, GPL)" |
+            Out-File build/stage/ffmpeg/licenses/FFmpeg-SOURCE.txt -Encoding utf8
+          & build/stage/ffmpeg/ffmpeg.exe -hide_banner -version | Select-Object -First 1
+
+      - name: Self-test (all components and program only)
+        run: |
+          function Test-Build($name, $parts, $wantStab) {
+            $dir = "build/test-$name"
+            python -c "import shutil,sys; [shutil.copytree(p, sys.argv[1], dirs_exist_ok=True) for p in sys.argv[2:]]" $dir @parts
+            $out = Join-Path $PWD "selftest-$name.json"
+            $p = Start-Process -FilePath "$dir/PTZ Desk.exe" -ArgumentList '--selftest', $out -Wait -PassThru
+            Get-Content $out | Write-Host
+            $r = Get-Content $out -Raw | ConvertFrom-Json
+            if ($p.ExitCode -ne 0 -or -not $r.ok) { throw "${name}: self-test failed (exit $($p.ExitCode))" }
+            if ([bool]$r.stabilize -ne $wantStab) { throw "${name}: stabilization packages expected $wantStab, got $($r.stabilize)" }
+            if ($r.webview_error) { throw "${name}: app window toolkit not usable: $($r.webview_error)" }
+          }
+          Test-Build full @('build/stage/main', 'build/stage/ffmpeg', 'build/stage/stabilize') $true
+          Test-Build base @('build/stage/main') $false
+
+      - name: Installer (Inno Setup)
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          & $iscc "/DAppVersion=$env:VERSION" "/DStage=..\build\stage" packaging\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+
+      - name: Portable ZIP
+        run: |
+          $dir = "build/portable/PTZ Desk"
+          python -c "import shutil,sys; [shutil.copytree(p, sys.argv[1], dirs_exist_ok=True) for p in sys.argv[2:]]" $dir build/stage/main build/stage/ffmpeg build/stage/stabilize
+          "Settings and state are kept in this folder (portable mode). Delete this file to use %APPDATA%\PTZ Desk instead." |
+            Out-File "$dir/portable.txt" -Encoding utf8
+          Compress-Archive -Path "$dir" -DestinationPath "build/installer/PTZ-Desk-$env:VERSION-portable.zip"
+          Get-ChildItem build/installer | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PTZ-Desk-${{ env.VERSION }}-windows
+          path: build/installer/*
+          if-no-files-found: error
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/installer/*
+          generate_release_notes: true

@@ -1,8 +1,9 @@
 # PTZ Desk
 
 A browser-based control desk for network PTZ cameras: live video, smooth joystick moves, straight
-preset moves, focus pulling, exposure control, recording and post stabilization – served by a
-small Python server on your own computer, no cloud and no installation beyond Python and go2rtc.
+preset moves, focus pulling, exposure control, recording and post stabilization – in its own app
+window on your computer, with no cloud involved. Windows installer on the
+[releases page](https://github.com/itsjute/ptz-desk/releases); runs from source on any system with Python.
 
 ![PTZ Desk: live video with joystick, zoom and focus rockers, focus and exposure controls, actions and presets](docs/screenshot.png)
 
@@ -45,21 +46,23 @@ exactly as tall as the video – the joystick grows and shrinks with the availab
   exposure compensation, shutter and gain. An **overexposure warning** appears on the image when
   parts of it clip to white – useful with spotlights on a dark stage.
 - **Recording** on the server in original quality (no re-encoding), split into files of a set
-  length; **stills**, composition **guides** (crosshair, thirds), **180° rotation**, full screen.
+  length; **stills** (saved to the recording folder in the app), composition **guides**
+  (crosshair, thirds), **180° rotation**, full screen.
 
 ### Settings dialog
 Everything else lives in a settings dialog (gear button, top right) with tabs on the left:
 
 | Tab | Content |
 |---|---|
-| Camera | connection status, live stream choice, reconnect, camera auto-tracking on/off |
+| Camera | connection status, live stream choice, reconnect, camera auto-tracking on/off; **camera setup**: address, login, RTSP streams, ports |
 | Audio | audio source: the camera stream (line input) or an audio input of this computer, e.g. a USB audio interface; optional monitoring in the browser |
 | Controls | key speeds, zoom-key behaviour, wheel sensitivity, axis inversion, shortcut list |
 | Motion | motion curves editor with live preview: acceleration, braking, S-shape and top speed per axis |
 | Presets | straight or camera-driven recall, top speed, minimum duration, one-click **speed calibration** of all 24 levels |
-| Recordings | list of recordings and post stabilization (below) |
+| Recordings | recording folder (with *Browse*), file length, recorded stream; list of recordings and post stabilization (below) |
 | Calibration | record a motion test, VISCA check |
-| Diagnostics | status table, copyable report, log |
+| Diagnostics | status table, copyable report |
+| Log | live server log (camera, video service, recordings) – what used to be the console window – and the page's own events |
 
 ### Recordings
 - Lists the recordings with length, size and audio.
@@ -69,39 +72,58 @@ Everything else lives in a settings dialog (gear button, top right) with tabs on
 
 ---
 
-## Requirements
+## Installation (Windows)
 
-| | |
-|---|---|
-| Operating system | Windows 10/11 (the server also runs on Linux/macOS; a few conveniences such as opening folders are Windows-only) |
-| Python | 3.8 or newer – standard library only |
-| Video | [go2rtc](https://github.com/AlexxIT/go2rtc/releases) binary next to `server.py` |
-| Browser | a current Chrome, Edge or Firefox |
-| Optional | `ffmpeg`, `numpy` and `opencv-python-headless` for stabilization (installable from the Recordings view) |
+1. Download `PTZ-Desk-<version>-Setup.exe` from the [releases page](https://github.com/itsjute/ptz-desk/releases)
+   and run it. The installer is not code-signed, so Windows SmartScreen warns about an unknown
+   publisher – choose *More info → Run anyway*. No admin rights are needed.
+2. Choose the components:
+
+   | Component | Size | What for |
+   |---|---|---|
+   | PTZ Desk | required | the app and the video service [go2rtc](https://github.com/AlexxIT/go2rtc) |
+   | FFmpeg | optional | audio inputs of this computer (e.g. a USB audio interface), recording details; needed for stabilization |
+   | Stabilization | optional | NumPy and OpenCV for post stabilization of recordings |
+
+   Run the installer again at any time to add or remove components; settings are kept.
+3. Start **PTZ Desk** from the Start menu. On first start the settings open at *Camera*: enter
+   the camera's IP address, user and password and press *Save and connect*.
+   When Windows Firewall asks about go2rtc, allow access for private networks.
+
+PTZ Desk opens in its own window (Microsoft Edge WebView2, part of Windows 10/11). Closing the
+window stops the camera, the recording (after asking) and go2rtc. Settings and state live in
+`%APPDATA%\PTZ Desk`; uninstalling leaves them there. For a **portable** copy, unpack the
+`…-portable.zip` from the releases page – it keeps everything in its own folder.
 
 The camera must be reachable on your network and should have **ONVIF** and **VISCA over IP**
 enabled, its **RTSP** streams switched on and the video codec set to **H.264**.
 
-## Quick start (Windows)
+## Running from source (Windows, Linux, macOS)
 
-1. **Install Python** (if needed): `winget install Python.Python.3.13`
-2. **Get go2rtc:** download `go2rtc_win64.zip` from the
-   [releases page](https://github.com/AlexxIT/go2rtc/releases) and put `go2rtc.exe` next to `server.py`.
-3. **Configure:** copy `config.example.ini` to `config.ini` and fill in the camera IP, user,
-   password and the two RTSP addresses (from the camera's web interface, *Network → RTSP*).
-4. **Start:** double-click `start.bat`. The control page opens at <http://localhost:8765>.
-   On first start Windows Firewall asks about go2rtc – allow access for private networks.
-5. **Optional, for stabilization:** `winget install Gyan.FFmpeg`, then click
-   *Install numpy and OpenCV* in the Recordings view.
+| | |
+|---|---|
+| Python | 3.8 or newer – the server uses the standard library only |
+| Video | [go2rtc](https://github.com/AlexxIT/go2rtc/releases) binary next to `server.py` |
+| App window | optional: `pip install pywebview` |
+| Stabilization | optional: `ffmpeg` on the PATH, `pip install numpy opencv-python-headless` |
 
-To stop, press <kbd>Ctrl</kbd>+<kbd>C</kbd> in the console window or close it; the camera is
-stopped and go2rtc is shut down with it.
+```
+python app.py      # own window (pywebview); without pywebview an Edge/Chrome app window
+python server.py   # server only – open http://localhost:8765 in any browser
+```
 
-On Linux/macOS: put the `go2rtc` binary next to `server.py` and run `python3 server.py`.
+On Windows, `start.bat` runs `server.py` in a console window. Run from source, settings and
+state files live next to `server.py`. Any current Chrome, Edge or Firefox works as the browser.
+
+**Building the installer yourself:** the workflow in `.github/workflows/release.yml` does it on
+GitHub (*Actions → Windows installer → Run workflow*; pushing a tag `v*` also publishes a release).
+The files in `packaging/` are the PyInstaller spec, the Inno Setup script and the icon.
 
 ## Configuration
 
-All settings live in `config.ini` (see `config.example.ini`); restart the server after changes.
+The camera and recording settings are edited in the app (*Settings → Camera* and *Recordings*)
+and take effect at once. They are stored in `config.ini` in the data folder (see
+`config.example.ini` for all keys); only the page port and `local_only` need a restart.
 
 | Section | Key | Meaning |
 |---|---|---|
@@ -110,15 +132,18 @@ All settings live in `config.ini` (see `config.example.ini`); restart the server
 | | `control` | `auto` (camera web API, falling back to ONVIF), `web` or `onvif` |
 | | `user`, `password` | login of the camera web interface |
 | | `rtsp_main`, `rtsp_sub` | RTSP addresses of the main and sub stream |
+| | | (empty RTSP addresses default to `rtsp://<ip>:554/live/av0` and `…/av1`) |
 | `[server]` | `port` | port of the control page (8765) |
 | | `local_only` | `yes`: page only reachable on this computer; `no`: also from other devices on your network |
-| | `open_browser` | open the page automatically on start |
+| | `open_browser` | `server.py` only: open the page in the browser on start |
 | `[recording]` | `folder` | target folder (empty: *Videos/PTZ Desk* in your user folder) |
 | | `split_minutes` | start a new file every N minutes (0 = one file) |
 | | `stream` | `main` (full resolution) or `sub` |
 
 Everything you set in the page (curves, preset names, learned targets, calibrated speeds) is
-stored next to the server in small JSON files and survives restarts:
+stored in small JSON files in the data folder and survives restarts and updates. The data folder
+is `%APPDATA%\PTZ Desk` for the installed app, the program folder for a portable copy and the
+folder of `server.py` when run from source (override with the environment variable `PTZ_DESK_DATA`):
 
 | File | Content |
 |---|---|
@@ -128,6 +153,7 @@ stored next to the server in small JSON files and survives restarts:
 | `visca_speeds.json` | calibrated speed per VISCA level and axis |
 | `click_scale.json` | learned image scale per zoom position for double-click aiming |
 | `audio.json` | chosen audio source |
+| `ptz-desk.log` | server log (also shown under *Settings → Log*) |
 
 Browser-side preferences (stream, guides, rotation, key and wheel settings) are kept in the
 browser's local storage.
@@ -158,6 +184,8 @@ flowchart LR
   S -- "MP4 stream for recording" --> G
 ```
 
+- **`app.py`** – the desktop app: starts the server and shows the page in its own window
+  (pywebview/WebView2), with an Edge/Chrome app window as fallback.
 - **`server.py`** – HTTP server and glue: camera web API, ONVIF and VISCA clients, go2rtc
   supervision, recording, presets, focus, exposure, calibrations, stabilization jobs.
 - **`motion.py`** – the motion engine: jerk-limited S-curves at 50 Hz, a dead man's switch,
@@ -175,18 +203,24 @@ The server binds to `127.0.0.1` unless `local_only = no`. It only answers reques
 `Host` header is `localhost` or an IP address (against DNS rebinding) and only accepts POSTs
 carrying the custom `X-PTZ-Desk` header that the page sends. There is no authentication of its
 own – only set `local_only = no` on a network you trust. `config.ini` holds the camera password
-and is excluded from version control.
+in plain text (readable by your user account only, like the rest of `%APPDATA%`) and is excluded
+from version control. The page never receives the password back; RTSP addresses are shown masked.
 
 ## Troubleshooting
 
+- **What is going on?** *Settings → Log* shows everything the server reports, including go2rtc's
+  own messages; *Open data folder* leads to `ptz-desk.log`.
 - **"Video failed"** – most often Windows Firewall blocks go2rtc; allow it for private networks.
   If the camera sends H.265, switch it to H.264 or use the sub stream.
-- **Camera not connected** – check IP, user and password in `config.ini`; *Settings →
+- **Camera not connected** – check IP, user and password under *Settings → Camera*; *Settings →
   Diagnostics* shows ONVIF and web API errors. *Copy report* produces a JSON report without the password.
 - **Exposure panel says "not readable over VISCA"** – the camera does not support the VISCA
   exposure commands; the server stores the web API's picture settings in `image_settings.json`.
 - **No sound from an audio interface** – the device is added through go2rtc and ffmpeg
-  (DirectShow on Windows); ffmpeg must be installed. Check the server window for go2rtc messages.
+  (DirectShow on Windows); install the FFmpeg component (or put ffmpeg on the PATH). Check
+  *Settings → Log* for go2rtc messages.
+- **The app opens in an Edge window instead of its own** – the
+  WebView2 runtime is missing; install it from Microsoft ("Evergreen Standalone Installer").
 - **Presets move on a bent path** – they have no VISCA target yet: recall them once (the server
   learns the target) or save them again.
 

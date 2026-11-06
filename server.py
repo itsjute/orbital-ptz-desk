@@ -9,9 +9,12 @@ Connects the control page in the browser with the PTZ camera on the network:
 
 Runs on Python 3.8+ with the standard library only; stabilization additionally needs
 numpy and opencv-python-headless (installable from the page).
-Settings live in config.ini next to this file.
+Run from source, settings and state live next to this file (config.ini, *.json). The installed
+app keeps them in %APPDATA%\\PTZ Desk instead (or next to the program if a config.ini is there).
+`python server.py` serves the page for any browser; `python app.py` opens it in its own window.
 """
 import base64
+import collections
 import configparser
 import datetime
 import hashlib
@@ -39,15 +42,139 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse, urlunparse
 from xml.sax.saxutils import escape
 
+FROZEN = bool(getattr(sys, "frozen", False))          # packaged app (PyInstaller)
 HERE = os.path.dirname(os.path.abspath(__file__))
-INI = os.path.join(HERE, "config.ini")
-LEGACY_INI = os.path.join(HERE, "kamera.ini")
-PAGE = os.path.join(HERE, "index.html")
+RES_DIR = getattr(sys, "_MEIPASS", HERE)               # bundled files: index.html, version.txt
+APP_DIR = os.path.dirname(os.path.abspath(sys.executable)) if FROZEN else HERE
+
+
+def _data_dir():
+    """Where settings, state files and the log live."""
+    env = os.environ.get("PTZ_DESK_DATA", "").strip()
+    if env:
+        return os.path.abspath(os.path.expanduser(env))
+    if not FROZEN or any(os.path.exists(os.path.join(APP_DIR, n)) for n in ("config.ini", "portable.txt")):
+        return APP_DIR                                 # from source, or a portable copy of the app
+    home = os.path.expanduser("~")
+    if os.name == "nt":
+        return os.path.join(os.environ.get("APPDATA") or home, "PTZ Desk")
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Application Support", "PTZ Desk")
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "ptz-desk")
+
+
+DATA_DIR = _data_dir()
+os.makedirs(DATA_DIR, exist_ok=True)
+INI = os.path.join(DATA_DIR, "config.ini")
+LEGACY_INI = os.path.join(DATA_DIR, "kamera.ini")
+PAGE = os.path.join(RES_DIR, "index.html")
+LOG_PATH = os.path.join(DATA_DIR, "ptz-desk.log")
 GO2RTC_API = "http://127.0.0.1:1984"
 
 
+def _read_version():
+    for d in (RES_DIR, APP_DIR):
+        try:
+            with open(os.path.join(d, "version.txt"), encoding="utf-8") as f:
+                v = f.read().strip()
+                if v:
+                    return v
+        except OSError:
+            pass
+    return "source"
+
+
+VERSION = _read_version()
+
+
+def find_tool(name):
+    """go2rtc / ffmpeg: next to the program, in the bundle, in the data folder, then on PATH."""
+    exe = name + (".exe" if os.name == "nt" else "")
+    for d in dict.fromkeys((APP_DIR, RES_DIR, os.path.join(APP_DIR, "bin"), DATA_DIR)):
+        p = os.path.join(d, exe)
+        if os.path.isfile(p):
+            return p
+    return shutil.which(name)
+
+
+# --------------------------------------------------------------------------- log
+# Everything the server reports goes to the console (if there is one), into a ring buffer that
+# the page shows under Settings -> Log, and into ptz-desk.log in the data folder.
+
+_LOG = collections.deque(maxlen=4000)
+_LOG_LOCK = threading.Lock()
+_LOG_STATE = {"seq": 0, "file": None, "console": sys.stdout}
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
 def log(msg):
-    print(time.strftime("%H:%M:%S"), msg, flush=True)
+    stamp = time.strftime("%H:%M:%S")
+    lines = [ln.rstrip() for ln in _ANSI.sub("", str(msg)).splitlines()] or [""]
+    with _LOG_LOCK:
+        for ln in lines:
+            _LOG_STATE["seq"] += 1
+            text_ = f"{stamp} {ln}"
+            _LOG.append((_LOG_STATE["seq"], text_))
+            f = _LOG_STATE["file"]
+            if f:
+                try:
+                    f.write(text_ + "\n")
+                    f.flush()
+                except Exception:  # noqa
+                    _LOG_STATE["file"] = None
+            con = _LOG_STATE["console"]
+            if con:
+                try:
+                    con.write(text_ + "\n")
+                    con.flush()
+                except Exception:  # noqa
+                    _LOG_STATE["console"] = None
+
+
+def log_since(seq):
+    with _LOG_LOCK:
+        return {"lines": [[n, t] for n, t in _LOG if n > seq], "next": _LOG_STATE["seq"]}
+
+
+class _LogStream:
+    """Stands in for stdout/stderr in the windowed app, so prints and tracebacks reach the log."""
+    def __init__(self):
+        self.buf = ""
+
+    def write(self, s):
+        self.buf += str(s)
+        while "\n" in self.buf:
+            line, self.buf = self.buf.split("\n", 1)
+            if line.strip():
+                log(line)
+        return len(s)
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return False
+
+
+def setup_logging():
+    if _LOG_STATE["file"] is None:
+        try:
+            if os.path.exists(LOG_PATH) and os.path.getsize(LOG_PATH) > 2 * 1024 ** 2:
+                os.replace(LOG_PATH, LOG_PATH + ".old")
+            _LOG_STATE["file"] = open(LOG_PATH, "a", encoding="utf-8")
+            _LOG_STATE["file"].write("\n")
+        except OSError:
+            pass
+    if sys.stdout is None:
+        sys.stdout = _LogStream()
+    if sys.stderr is None:
+        sys.stderr = _LogStream()
+
+    def thread_hook(a):
+        import traceback
+        log(f"Error in {a.thread.name if a.thread else 'thread'}:\n" +
+            "".join(traceback.format_exception(a.exc_type, a.exc_value, a.exc_traceback)))
+    threading.excepthook = thread_hook
 
 
 # --------------------------------------------------------------------------- settings
@@ -97,7 +224,7 @@ def migrate_legacy():
             new.write(f)
         log("Settings taken over from kamera.ini into config.ini (kamera.ini can be deleted).")
     for old_name, new_name in LEGACY_FILES.items():
-        o, n = os.path.join(HERE, old_name), os.path.join(HERE, new_name)
+        o, n = os.path.join(DATA_DIR, old_name), os.path.join(DATA_DIR, new_name)
         if os.path.exists(o) and not os.path.exists(n):
             try:
                 os.replace(o, n)
@@ -106,24 +233,187 @@ def migrate_legacy():
                 pass
 
 
-def load_config():
+def read_ini():
     cp = configparser.ConfigParser(interpolation=None)
     cp.read_dict(DEFAULT_CONFIG)
     if os.path.exists(INI):
         cp.read(INI, encoding="utf-8-sig")
-    else:
-        log(f"Note: {INI} is missing, using defaults. Copy config.example.ini to config.ini.")
+    return cp
+
+
+def default_rtsp(ip, which):
+    """RTSP address used when none is set (path of the TONGVEO and related cameras)."""
+    return f"rtsp://{ip}:554/live/{'av0' if which == 'main' else 'av1'}" if ip else ""
+
+
+def load_config(quiet=False):
+    cp = read_ini()
+    if not os.path.exists(INI) and not quiet:
+        log("No camera set up yet – enter it under Settings → Camera.")
     c, s, r = cp["camera"], cp["server"], cp["recording"]
     yes = lambda v: v.strip().lower() in ("yes", "true", "1", "on", "ja")
     stream = LEGACY_VALUES.get(r["stream"].strip().lower(), r["stream"].strip().lower()) or "main"
     return {
         "ip": c["ip"].strip(), "onvif_port": int(c["onvif_port"]), "user": c["user"].strip(),
         "web_port": int(c["web_port"]), "control": c["control"].strip().lower(),
-        "password": c["password"], "rtsp_main": c["rtsp_main"].strip(), "rtsp_sub": c["rtsp_sub"].strip(),
+        "password": c["password"],
+        "rtsp_main": c["rtsp_main"].strip() or default_rtsp(c["ip"].strip(), "main"),
+        "rtsp_sub": c["rtsp_sub"].strip() or default_rtsp(c["ip"].strip(), "sub"),
         "port": int(s["port"]), "local_only": yes(s["local_only"]), "open_browser": yes(s["open_browser"]),
         "rec_dir": os.path.expandvars(os.path.expanduser(r["folder"].strip())) or os.path.join(os.path.expanduser("~"), "Videos", "PTZ Desk"),
         "rec_minutes": int(r["split_minutes"] or 0), "rec_stream": stream,
+        "configured": os.path.exists(INI),
     }
+
+
+# --- editing the settings from the page (Settings -> Camera)
+
+MASK = "••••"
+
+
+def _mask_url(url):
+    """Hide a password inside rtsp://user:password@host/… ."""
+    try:
+        u = urlparse(url)
+        if u.password:
+            host = u.netloc.rsplit("@", 1)[1]
+            return urlunparse(u._replace(netloc=f"{u.username}:{MASK}@{host}"))
+    except ValueError:
+        pass
+    return url
+
+
+def _unmask_url(new, old):
+    if MASK not in new:
+        return new
+    try:
+        pw = urlparse(old).password or ""
+    except ValueError:
+        pw = ""
+    return new.replace(MASK, pw, 1)
+
+
+def config_view():
+    cp = read_ini()
+    c, sv, r = cp["camera"], cp["server"], cp["recording"]
+    return {
+        "camera": {"ip": c["ip"], "onvif_port": int(c["onvif_port"]), "web_port": int(c["web_port"]),
+                   "control": c["control"], "user": c["user"], "password_set": bool(c["password"]),
+                   "rtsp_main": _mask_url(c["rtsp_main"]), "rtsp_sub": _mask_url(c["rtsp_sub"])},
+        "server": {"port": int(sv["port"]), "local_only": sv["local_only"].strip().lower() in ("yes", "true", "1", "on", "ja")},
+        "recording": {"folder": r["folder"], "split_minutes": int(r["split_minutes"] or 0),
+                      "stream": LEGACY_VALUES.get(r["stream"].strip().lower(), r["stream"].strip().lower()) or "main"},
+        "defaults": {"rec_dir": os.path.join(os.path.expanduser("~"), "Videos", "PTZ Desk")},
+        "configured": os.path.exists(INI), "file": INI, "data_dir": DATA_DIR,
+    }
+
+
+def save_config(data):
+    """Validate, write config.ini and apply what can be applied without a restart."""
+    cp = read_ini()
+    cam, srv, rec = data.get("camera") or {}, data.get("server") or {}, data.get("recording") or {}
+
+    def port(v, what):
+        n = int(v)
+        if not 1 <= n <= 65535:
+            raise ValueError(f"{what} must be between 1 and 65535")
+        return str(n)
+
+    if "ip" in cam:
+        ip = str(cam["ip"]).strip()
+        if not ip or any(ch in ip for ch in " /@?#"):
+            raise ValueError("enter the camera's IP address or host name")
+        cp.set("camera", "ip", ip)
+    for k, what in (("onvif_port", "ONVIF port"), ("web_port", "web port")):
+        if k in cam:
+            cp.set("camera", k, port(cam[k], what))
+    if "control" in cam:
+        v = str(cam["control"]).strip().lower()
+        if v not in ("auto", "web", "onvif"):
+            raise ValueError("control must be auto, web or onvif")
+        cp.set("camera", "control", v)
+    if "user" in cam:
+        cp.set("camera", "user", str(cam["user"]).strip())
+    if cam.get("password") is not None:          # null/missing = keep the stored password
+        cp.set("camera", "password", str(cam["password"]))
+    for k in ("rtsp_main", "rtsp_sub"):
+        if k in cam:
+            v = _unmask_url(str(cam[k]).strip(), cp.get("camera", k))
+            if v and not v.lower().startswith(("rtsp://", "rtsps://")):
+                raise ValueError("RTSP addresses start with rtsp://")
+            cp.set("camera", k, v)
+    if "port" in srv:
+        cp.set("server", "port", port(srv["port"], "page port"))
+    if "local_only" in srv:
+        cp.set("server", "local_only", "yes" if srv["local_only"] else "no")
+    if "folder" in rec:
+        cp.set("recording", "folder", str(rec["folder"]).strip())
+    if "split_minutes" in rec:
+        n = int(rec["split_minutes"])
+        if not 0 <= n <= 1440:
+            raise ValueError("split minutes must be between 0 and 1440")
+        cp.set("recording", "split_minutes", str(n))
+    if "stream" in rec:
+        v = str(rec["stream"]).strip().lower()
+        if v not in ("main", "sub"):
+            raise ValueError("recorded stream must be main or sub")
+        cp.set("recording", "stream", v)
+
+    tmp = INI + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("; PTZ Desk settings – edited in the app (Settings → Camera) or by hand.\n"
+                "; See config.example.ini for an explanation of every option.\n")
+        cp.write(f)
+    os.replace(tmp, INI)
+    old, new = App.cfg, load_config(quiet=True)
+    restart = apply_config(old, new)
+    log("Settings saved" + (" – restart PTZ Desk for the new page port/network setting." if restart else "."))
+    return {"ok": True, "restart_required": restart, "config": config_view()}
+
+
+CAMERA_KEYS = ("ip", "onvif_port", "web_port", "control", "user", "password")
+
+
+def apply_config(old, new):
+    """Bring the running objects in line with new settings. Returns True if a restart is needed."""
+    # page port and network binding stay as they were until the next start
+    for k in ("port", "local_only", "open_browser"):
+        new[k] = old[k]
+    App.cfg = new
+    if any(old[k] != new[k] for k in CAMERA_KEYS):
+        try:
+            App.moves.cancel()
+            App.motion.engine.halt()
+            App.ptz.stop()
+        except Exception:  # noqa
+            pass
+        if App.moves.link is not None:
+            try:
+                App.moves.link.close()
+            except Exception:  # noqa
+                pass
+            App.moves.link = None
+        App.moves.zoom_direct_ok = App.moves.focus_direct_ok = None
+        App.expo.iris_max = None
+        App.cam = Onvif(new)
+        App.web = WebApi(new)
+        App.ptz = Control(new, App.cam, App.web)
+        App.dog.cam = App.ptz
+        threading.Thread(target=connect_camera, name="connect", daemon=True).start()
+    if (old["rtsp_main"], old["rtsp_sub"]) != (new["rtsp_main"], new["rtsp_sub"]) or (not old["configured"] and new["configured"]):
+        App.video.rtsp = {k: v for k, v in (("main", new["rtsp_main"]), ("sub", new["rtsp_sub"])) if v}
+
+        def restart_video():
+            try:
+                App.video.restart()
+            except Exception as e:  # noqa
+                App.video.state = str(e)
+            log(f"Video: {App.video.state}")
+        threading.Thread(target=restart_video, name="video", daemon=True).start()
+    App.rec.dir, App.rec.seg, App.rec.src = new["rec_dir"], max(0, new["rec_minutes"]) * 60, new["rec_stream"]
+    cp = read_ini()
+    want_local = cp.get("server", "local_only").strip().lower() in ("yes", "true", "1", "on", "ja")
+    return int(cp.get("server", "port")) != old["port"] or want_local != old["local_only"]
 
 
 # --------------------------------------------------------------------------- ONVIF
@@ -673,7 +963,7 @@ class Motion:
     def __init__(self):
         self.zoom_state = (0, 0)
         self.pt_on = False
-        self.engine = motion.Engine(os.path.join(HERE, "curves.json"), self.out_pt, self.out_zoom, log)
+        self.engine = motion.Engine(os.path.join(DATA_DIR, "curves.json"), self.out_pt, self.out_zoom, log)
 
     def out_pt(self, x, y):
         cam, web = App.cam, App.web
@@ -803,7 +1093,7 @@ class FocusCtl:
 
 class PresetNames:
     def __init__(self):
-        self.path = os.path.join(HERE, "presets.json")
+        self.path = os.path.join(DATA_DIR, "presets.json")
         self.names, self.targets = {}, {}
         self.lock = threading.Lock()
         try:
@@ -862,8 +1152,8 @@ class PresetNames:
 
 class PresetMoves:
     def __init__(self):
-        self.glide = glide.Glide(HERE, log)
-        self.clicks = glide.ClickModel(HERE, log)
+        self.glide = glide.Glide(DATA_DIR, log)
+        self.clicks = glide.ClickModel(DATA_DIR, log)
         self.gen = 0
         self.link = None
         self.zoom_direct_ok = None
@@ -1070,7 +1360,7 @@ class Exposure:
         self.dumped = True
         try:
             res = App.web.call("/AjaxGetCfgVImg", {"Channel": 0, "Profile": 0}).get("result") or {}
-            with open(os.path.join(HERE, "image_settings.json"), "w", encoding="utf-8") as f:
+            with open(os.path.join(DATA_DIR, "image_settings.json"), "w", encoding="utf-8") as f:
                 json.dump(res, f, ensure_ascii=False, indent=1)
         except Exception as e:  # noqa
             log(f"Image settings not readable: {e}")
@@ -1147,7 +1437,7 @@ class Exposure:
 
 class Audio:
     def __init__(self):
-        self.path = os.path.join(HERE, "audio.json")
+        self.path = os.path.join(DATA_DIR, "audio.json")
         self.cfg = {"source": "camera", "device": ""}
         try:
             with open(self.path, encoding="utf-8") as f:
@@ -1263,8 +1553,7 @@ class Video:
         self.cfg = cfg
         self.proc = None
         self.state = "off"
-        exe = "go2rtc.exe" if os.name == "nt" else "go2rtc"
-        self.exe = os.path.join(HERE, exe)
+        self.exe = find_tool("go2rtc") or os.path.join(APP_DIR, "go2rtc.exe" if os.name == "nt" else "go2rtc")
         self.rtsp = {k: v for k, v in (("main", cfg["rtsp_main"]), ("sub", cfg["rtsp_sub"])) if v}
         self.streams = {}
         self.foreign = False
@@ -1295,7 +1584,7 @@ class Video:
         if not self.streams:
             self.state = "no RTSP address in config.ini"
             return
-        yml = os.path.join(HERE, "go2rtc.yaml")
+        yml = os.path.join(DATA_DIR, "go2rtc.yaml")
         if self._api_ok():
             info = self._api_info()
             if os.path.normcase(os.path.abspath(info.get("config_path") or "")) == os.path.normcase(yml):
@@ -1311,15 +1600,15 @@ class Video:
                                   f"({', '.join(bad)}) – close go2rtc in Task Manager and restart")
                 else:
                     self.state = "running (go2rtc that was already running on port 1984, streams registered)"
-                    log("go2rtc was already running – registered the streams from config.ini there.")
+                    log("go2rtc was already running – registered our streams there.")
                 return
         if not os.path.exists(self.exe):
-            self.state = f"{os.path.basename(self.exe)} is missing in the folder"
+            self.state = f"{os.path.basename(self.exe)} is missing (put it next to the program)"
             return
         q = lambda s: '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
         lines = ["# Rewritten by PTZ Desk on every start. Make changes in config.ini.",
                  "api:", '  listen: "127.0.0.1:1984"', "rtsp:", '  listen: ""', "webrtc:", '  listen: ":8555"',
-                 "log:", "  level: warn", "streams:"]
+                 "log:", "  level: warn", "  format: text", "streams:"]
         for k, srcs in self.streams.items():
             lines.append(f"  {k}:")
             lines += [f"    - {q(v)}" for v in srcs]
@@ -1329,8 +1618,10 @@ class Video:
         with open(yml, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-        self.proc = subprocess.Popen([self.exe, "-config", yml], cwd=HERE, creationflags=flags)
+        self.proc = subprocess.Popen([self.exe, "-config", yml], cwd=DATA_DIR, creationflags=flags,
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self._job = bind_to_this_process(self.proc)
+        threading.Thread(target=self._pump, args=(self.proc,), name="go2rtc-log", daemon=True).start()
         for _ in range(30):
             time.sleep(0.2)
             if self._api_ok():
@@ -1340,6 +1631,15 @@ class Video:
                 self.state = f"go2rtc exited (code {self.proc.returncode})"
                 return
         self.state = "go2rtc does not respond"
+
+    @staticmethod
+    def _pump(proc):
+        """go2rtc's own messages into our log."""
+        for raw in iter(proc.stdout.readline, b""):
+            line = raw.decode("utf-8", "replace").strip()
+            if line:
+                log("go2rtc: " + line)
+        proc.stdout.close()
 
     def _api_info(self):
         try:
@@ -1816,7 +2116,7 @@ class ViscaCheck:
         finally:
             self.result = res
             try:
-                with open(os.path.join(HERE, "visca_check.json"), "w", encoding="utf-8") as f:
+                with open(os.path.join(DATA_DIR, "visca_check.json"), "w", encoding="utf-8") as f:
                     json.dump(res, f, ensure_ascii=False, indent=1)
             except OSError:
                 pass
@@ -1924,7 +2224,7 @@ class Smoother:
 
     def find(self):
         exe = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-        cands = [os.path.join(HERE, exe), shutil.which("ffmpeg")]
+        cands = [find_tool("ffmpeg")]
         la = os.environ.get("LOCALAPPDATA")
         if la:
             cands.append(os.path.join(la, "Microsoft", "WinGet", "Links", exe))
@@ -1952,6 +2252,11 @@ class Smoother:
 
     def install_deps(self):
         if self.pip["running"]:
+            return self.status()
+        if FROZEN:
+            self.pip = {"running": False, "log": "",
+                        "error": "This copy was installed without the stabilization component – run the PTZ Desk "
+                                 "installer again and tick “Stabilization”."}
             return self.status()
         self.pip = {"running": True, "log": "", "error": ""}
 
@@ -2084,6 +2389,17 @@ class Smoother:
 
 class App:
     cfg = cam = web = ptz = dog = video = rec = motion = cal = smooth = vcheck = focus = names = moves = expo = audio = None
+    booting = False
+
+
+def open_path(path):
+    if os.name == "nt":
+        os.startfile(path)  # noqa
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", path])
+
+
+APP_WINDOW = {"kind": "browser"}   # set by app.py: "window" when shown in its own window
 
 
 def is_safe_host(host):
@@ -2140,6 +2456,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/status":
             return self._status()
+        if path == "/api/log":
+            try:
+                since = int(parse_qs(urlparse(self.path).query).get("since", ["0"])[0])
+            except ValueError:
+                since = 0
+            return self._send(200, log_since(since))
+        if path == "/api/config":
+            return self._run(config_view)
         if path == "/api/ptz/presets":
             return self._run(lambda: App.names.merge(App.ptz.presets()))
         if path == "/api/focus":
@@ -2179,6 +2503,8 @@ class Handler(BaseHTTPRequestHandler):
         path = u.path
         if path == "/api/webrtc":
             return self._webrtc(parse_qs(u.query).get("src", [""])[0])
+        if path == "/api/still":
+            return self._run(self._still)
         try:
             data = json.loads(self._body() or b"{}")
         except ValueError:
@@ -2190,6 +2516,8 @@ class Handler(BaseHTTPRequestHandler):
             App.moves.cancel()
         routes = {
             "/api/connect": self._reconnect,
+            "/api/config": lambda: save_config(data),
+            "/api/log/open": lambda: (open_path(DATA_DIR), {"ok": True, "folder": DATA_DIR})[1],
             "/api/ptz/move": lambda: (cam.move(float(data.get("x", 0)), float(data.get("y", 0)), float(data.get("z", 0))),
                                       dog.moved(), {"ok": True})[2],
             "/api/ptz/alive": lambda: (dog.alive(), {"ok": True})[1],
@@ -2265,10 +2593,28 @@ class Handler(BaseHTTPRequestHandler):
             return App.expo.iris_open()
         return App.expo.step(str(data["step"]), int(data.get("direction", 1)) > 0)
 
+    def _still(self):
+        """Still image from the page (JPEG) -> recordings folder."""
+        n = int(self.headers.get("Content-Length") or 0)
+        if not 0 < n <= 40 * 1024 ** 2:
+            raise ValueError("no image")
+        data = self.rfile.read(n)
+        if data[:3] != b"\xff\xd8\xff":
+            raise ValueError("not a JPEG image")
+        os.makedirs(App.rec.dir, exist_ok=True)
+        name = time.strftime("still_%Y-%m-%d_%H-%M-%S.jpg")
+        path = os.path.join(App.rec.dir, name)
+        k = 1
+        while os.path.exists(path):
+            k += 1
+            path = os.path.join(App.rec.dir, name[:-4] + f"_{k}.jpg")
+        with open(path, "wb") as f:
+            f.write(data)
+        return {"ok": True, "file": os.path.basename(path), "folder": App.rec.dir}
+
     def _open_folder(self):
         os.makedirs(App.rec.dir, exist_ok=True)
-        if os.name == "nt":
-            os.startfile(App.rec.dir)  # noqa
+        open_path(App.rec.dir)
         return {"ok": True, "folder": App.rec.dir}
 
     def _reveal(self, data):
@@ -2278,6 +2624,10 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("file not found")
         if os.name == "nt":
             subprocess.Popen(f'explorer /select,"{p}"')
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "-R", p])
+        else:
+            open_path(os.path.dirname(p))
         return {"ok": True}
 
     def _run(self, fn):
@@ -2294,6 +2644,8 @@ class Handler(BaseHTTPRequestHandler):
     def _status_dict(self):
         c = App.cam
         return {
+            "app": {"version": VERSION, "configured": App.cfg["configured"], "booting": App.booting,
+                    "frozen": FROZEN, "data_dir": DATA_DIR, "window": APP_WINDOW["kind"]},
             "camera": {"ip": App.cfg["ip"], "onvif_port": App.cfg["onvif_port"], "user": App.cfg["user"],
                        "password_set": bool(App.cfg["password"])},
             "onvif": {"connected": c.connected, "error": c.last_error, "info": c.info, "profile": c.profile,
@@ -2310,6 +2662,8 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     def _status(self):
+        if App.booting or not App.cfg["configured"]:
+            return self._send(200, self._status_dict())
         if App.cfg["control"] != "onvif" and not App.web.connected:
             try:
                 App.web.connect()
@@ -2339,34 +2693,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send(503, {"error": f"Video service not reachable ({App.video.state})"})
 
 
-def main():
-    migrate_legacy()
-    App.cfg = cfg = load_config()
-    App.cam = Onvif(cfg)
-    App.web = WebApi(cfg)
-    App.ptz = Control(cfg, App.cam, App.web)
-    App.dog = Watchdog(App.ptz)
-    App.video = Video(cfg)
-    App.rec = Recorder(cfg)
-    App.motion = Motion()
-    App.cal = Calibration()
-    App.vcheck = ViscaCheck()
-    App.focus = FocusCtl()
-    App.names = PresetNames()
-    App.moves = PresetMoves()
-    App.expo = Exposure()
-    App.audio = Audio()
-    App.smooth = Smoother(App.rec)
-    App.smooth.check()
-
-    print()
-    print("  PTZ Desk")
-    print("  " + "-" * 8)
-    log(f"Stabilizing: ffmpeg {App.smooth.ff or '– ' + App.smooth.ff_info} · packages {App.smooth.deps_info}")
+def connect_camera():
+    """Connect ONVIF and the web API and report what was found (also after settings changes)."""
+    cfg = App.cfg
+    if not cfg["configured"]:
+        return
     if not cfg["password"]:
-        log("Note: no password set in config.ini.")
-    App.video.start()
-    log(f"Video: {App.video.state}")
+        log("Note: no camera password set.")
     try:
         App.cam.connect()
         i = App.cam.info
@@ -2384,50 +2717,93 @@ def main():
     if App.ptz.mode() == "onvif":
         log("Control: ONVIF")
 
+
+class PortInUse(Exception):
+    pass
+
+
+def boot():
+    """Create everything and open the HTTP server (not serving yet). Video and camera connect in
+    the background so that the page is there at once. Returns (server, url)."""
+    setup_logging()
+    log(f"PTZ Desk {VERSION} – data folder {DATA_DIR}")
+    migrate_legacy()
+    App.cfg = cfg = load_config()
+    App.cam = Onvif(cfg)
+    App.web = WebApi(cfg)
+    App.ptz = Control(cfg, App.cam, App.web)
+    App.dog = Watchdog(App.ptz)
+    App.video = Video(cfg)
+    App.rec = Recorder(cfg)
+    App.motion = Motion()
+    App.cal = Calibration()
+    App.vcheck = ViscaCheck()
+    App.focus = FocusCtl()
+    App.names = PresetNames()
+    App.moves = PresetMoves()
+    App.expo = Exposure()
+    App.audio = Audio()
+    App.smooth = Smoother(App.rec)
+
     bind = "127.0.0.1" if cfg["local_only"] else "0.0.0.0"
     try:
         srv = ThreadingHTTPServer((bind, cfg["port"]), Handler)
     except OSError as e:
-        log(f"Port {cfg['port']} is in use ({e}). Is the server already running? Otherwise pick another port in config.ini.")
-        App.video.stop()
-        return 1
+        raise PortInUse(f"Port {cfg['port']} is in use ({e}). Is PTZ Desk already running? "
+                        "Otherwise pick another page port in config.ini.")
     url = f"http://localhost:{cfg['port']}/"
-    log(f"Control page: {url}")
-    log(f"Recordings: {App.rec.dir} (stream {App.rec.src}, {'every ' + str(App.rec.seg // 60) + ' min' if App.rec.seg else 'one file'})")
+    App.booting = True
+
+    def startup():
+        try:
+            App.smooth.check()
+            log(f"Stabilizing: ffmpeg {App.smooth.ff or '– ' + App.smooth.ff_info} · packages {App.smooth.deps_info}")
+            if cfg["configured"]:
+                App.video.start()
+            else:
+                App.video.state = "no camera set up yet"
+            log(f"Video: {App.video.state}")
+            connect_camera()
+        finally:
+            App.booting = False
+        log(f"Recordings: {App.rec.dir} (stream {App.rec.src}, "
+            f"{'every ' + str(App.rec.seg // 60) + ' min' if App.rec.seg else 'one file'})")
+
+    threading.Thread(target=startup, name="startup", daemon=True).start()
+    log(f"Control page: {url}" + ("" if cfg["local_only"] else f" (also reachable from the network on port {cfg['port']})"))
+    return srv, url
+
+
+def shutdown():
+    """Stop moves, recording, camera and go2rtc. Safe to call more than once."""
+    if getattr(shutdown, "done", False):
+        return
+    shutdown.done = True
+    for fn in (App.moves.cancel, App.motion.engine.halt, App.focus.stop, lambda: App.rec.stop(wait=3),
+               App.ptz.stop, App.video.stop):
+        try:
+            fn()
+        except Exception:  # noqa
+            pass
+    log("Stopped.")
+
+
+def main():
+    try:
+        srv, url = boot()
+    except PortInUse as e:
+        log(str(e))
+        return 1
     log("Keep this window open. Quit with Ctrl+C.")
-
-    def cleanup():
-        try:
-            App.moves.cancel()
-        except Exception:  # noqa
-            pass
-        App.motion.engine.halt()
-        try:
-            App.focus.stop()
-        except Exception:  # noqa
-            pass
-        App.rec.stop(wait=3)
-        try:
-            App.ptz.stop()
-        except Exception:
-            pass
-        App.video.stop()
-
-    on_window_close(cleanup)
-    if cfg["open_browser"]:
+    on_window_close(shutdown)
+    if App.cfg["open_browser"]:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        App.rec.stop(wait=3)
-        try:
-            App.ptz.stop()
-        except Exception:
-            pass
-        App.video.stop()
-        log("Stopped.")
+        shutdown()
     return 0
 
 

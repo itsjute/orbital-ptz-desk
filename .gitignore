@@ -39,3 +39,16 @@ __pycache__/
 *.pyc
 *.mp4
 *.webm
+
+# App mode: log, window profile (source runs keep their data next to the code)
+ptz-desk.log
+ptz-desk.log.old
+config.ini.tmp
+webview/
+browser/
+
+# Build output (packaging/, GitHub Actions)
+build/
+dist/
+version.txt
+selftest*.json
