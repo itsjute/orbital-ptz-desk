@@ -15,9 +15,9 @@ AppName=Orbital
 AppVersion={#AppVersion}
 AppVerName=Orbital {#AppVersion}
 AppPublisher=Julian Teuber
-AppPublisherURL=https://github.com/itsjute/ptz-desk
-AppSupportURL=https://github.com/itsjute/ptz-desk/issues
-AppUpdatesURL=https://github.com/itsjute/ptz-desk/releases
+AppPublisherURL=https://github.com/itsjute/orbital-ptz-desk
+AppSupportURL=https://github.com/itsjute/orbital-ptz-desk/issues
+AppUpdatesURL=https://github.com/itsjute/orbital-ptz-desk/releases
 DefaultDirName={autopf}\Orbital
 ; versions before 1.1 were called "PTZ Desk" and lived in another folder
 UsePreviousAppDir=no

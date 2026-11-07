@@ -8,7 +8,7 @@
 A control desk for network PTZ cameras for network PTZ cameras: live video, smooth joystick moves, straight
 preset moves, focus pulling, exposure control, recording and post stabilization – in its own app
 window on your computer, with no cloud involved. Windows installer on the
-[releases page](https://github.com/itsjute/ptz-desk/releases); runs from source on any system with Python.
+[releases page](https://github.com/itsjute/orbital-ptz-desk/releases); runs from source on any system with Python.
 
 ![Orbital: live video with joystick, zoom and focus rockers, focus and exposure controls, actions and presets](docs/screenshot.png)
 
@@ -82,7 +82,7 @@ Everything else lives in a settings dialog (gear button, top right) with tabs on
 
 ## Installation (Windows)
 
-1. Download `Orbital-<version>-Setup.exe` from the [releases page](https://github.com/itsjute/ptz-desk/releases)
+1. Download `Orbital-<version>-Setup.exe` from the [releases page](https://github.com/itsjute/orbital-ptz-desk/releases)
    and run it. The installer is not code-signed, so Windows SmartScreen warns about an unknown
    publisher – choose *More info → Run anyway*. No admin rights are needed.
 2. Choose the components:
