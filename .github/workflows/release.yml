@@ -1,6 +1,6 @@
 name: Windows installer
 
-# Builds "PTZ Desk.exe" with PyInstaller, adds go2rtc and FFmpeg and packs everything into an
+# Builds "Orbital.exe" with PyInstaller, adds go2rtc and FFmpeg and packs everything into an
 # Inno Setup installer with optional components. Publishing a release:
 #   - push a tag like v1.2.0, or
 #   - "Run workflow" with a version (1.2.0): creates the tag v1.2.0 on the chosen commit.
@@ -56,16 +56,16 @@ jobs:
           python -m pip list
 
       - name: Build without stabilization packages
-        run: pyinstaller --noconfirm --clean --distpath build/base --workpath build/work-base packaging/ptz-desk.spec
+        run: pyinstaller --noconfirm --clean --distpath build/base --workpath build/work-base packaging/orbital.spec
 
       - name: Build with stabilization packages
         env:
           PTZ_BUILD_FULL: "1"
-        run: pyinstaller --noconfirm --clean --distpath build/full --workpath build/work-full packaging/ptz-desk.spec
+        run: pyinstaller --noconfirm --clean --distpath build/full --workpath build/work-full packaging/orbital.spec
 
       - name: Sort files into installer components
         run: |
-          python packaging/split_components.py "build/full/PTZ Desk" "build/base/PTZ Desk" build/stage
+          python packaging/split_components.py "build/full/Orbital" "build/base/Orbital" build/stage
           Copy-Item LICENSE, THIRD-PARTY-NOTICES.md, README.md build/stage/main/
 
       - name: Download go2rtc
@@ -102,7 +102,7 @@ jobs:
             $dir = "build/test-$name"
             python -c "import shutil,sys; [shutil.copytree(p, sys.argv[1], dirs_exist_ok=True) for p in sys.argv[2:]]" $dir @parts
             $out = Join-Path $PWD "selftest-$name.json"
-            $p = Start-Process -FilePath "$dir/PTZ Desk.exe" -ArgumentList '--selftest', $out -Wait -PassThru
+            $p = Start-Process -FilePath "$dir/Orbital.exe" -ArgumentList '--selftest', $out -Wait -PassThru
             Get-Content $out | Write-Host
             $r = Get-Content $out -Raw | ConvertFrom-Json
             if ($p.ExitCode -ne 0 -or -not $r.ok) { throw "${name}: self-test failed (exit $($p.ExitCode))" }
@@ -124,16 +124,16 @@ jobs:
 
       - name: Portable ZIP
         run: |
-          $dir = "build/portable/PTZ Desk"
+          $dir = "build/portable/Orbital"
           python -c "import shutil,sys; [shutil.copytree(p, sys.argv[1], dirs_exist_ok=True) for p in sys.argv[2:]]" $dir build/stage/main build/stage/ffmpeg build/stage/stabilize
-          "Settings and state are kept in this folder (portable mode). Delete this file to use %APPDATA%\PTZ Desk instead." |
+          "Settings and state are kept in this folder (portable mode). Delete this file to use %APPDATA%\Orbital instead." |
             Out-File "$dir/portable.txt" -Encoding utf8
-          Compress-Archive -Path "$dir" -DestinationPath "build/installer/PTZ-Desk-$env:VERSION-portable.zip"
+          Compress-Archive -Path "$dir" -DestinationPath "build/installer/Orbital-$env:VERSION-portable.zip"
           Get-ChildItem build/installer | Format-Table Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PTZ-Desk-${{ env.VERSION }}-windows
+          name: Orbital-${{ env.VERSION }}-windows
           path: build/installer/*
           if-no-files-found: error
 
@@ -143,18 +143,18 @@ jobs:
         with:
           tag_name: v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
-          name: PTZ Desk ${{ env.VERSION }}
+          name: Orbital ${{ env.VERSION }}
           files: build/installer/*
           generate_release_notes: true
           body: |
             ## Download
 
-            **Windows 10/11:** `PTZ-Desk-${{ env.VERSION }}-Setup.exe` – run it, choose the components
+            **Windows 10/11:** `Orbital-${{ env.VERSION }}-Setup.exe` – run it, choose the components
             (FFmpeg for audio inputs and stabilization, NumPy/OpenCV for stabilization) and start
-            PTZ Desk from the Start menu. No admin rights needed. The installer is not code-signed:
+            Orbital from the Start menu. No admin rights needed. The installer is not code-signed:
             if SmartScreen warns, choose *More info → Run anyway*.
 
-            **Portable:** `PTZ-Desk-${{ env.VERSION }}-portable.zip` – unpack and run `PTZ Desk.exe`;
+            **Portable:** `Orbital-${{ env.VERSION }}-portable.zip` – unpack and run `Orbital.exe`;
             settings stay in that folder.
 
             On first start, enter the camera under *Settings → Camera*. See the

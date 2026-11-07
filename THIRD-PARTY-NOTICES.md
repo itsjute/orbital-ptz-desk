@@ -6,7 +6,7 @@
 activity, aperture, camera, cctv, check, circle, copy, film, flower-2, focus, folder-open, grid-3x3,
 house, keyboard, lock, maximize, mic, minus, mountain, pencil, plus, refresh-cw, rotate-cw, route,
 ruler, save, scan-eye, settings, sliders-horizontal, spline, square, sun, terminal, video,
-volume-2, volume-x, x, zoom-in. The app icon (`packaging/ptz-desk.ico`) is drawn from the cctv icon.
+volume-2, volume-x, x, zoom-in. 
 
 ```
 ISC License
@@ -49,3 +49,10 @@ keeps its own licence:
 - [NumPy](https://numpy.org) (BSD) and [OpenCV](https://opencv.org) (Apache 2.0) – optional, installed with pip.
 - [pywebview](https://pywebview.flowrl.com) (BSD 3-Clause) – optional, for `app.py`.
 - Fonts [Barlow](https://fonts.google.com/specimen/Barlow) and [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (SIL Open Font License) – loaded from Google Fonts.
+
+## Logo
+
+The lettering of the Orbital logo (`docs/logo-*.svg`, the page header) is set in
+[Poppins](https://fonts.google.com/specimen/Poppins) Medium by Indian Type Foundry and converted to
+outlines; Poppins is licensed under the SIL Open Font License 1.1. The planet symbol was traced
+with a Python port of [potrace](https://potrace.sourceforge.net) – only the output is included.

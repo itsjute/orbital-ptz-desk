@@ -1,7 +1,7 @@
-# PyInstaller build of "PTZ Desk.exe" (one folder, no console window).
+# PyInstaller build of "Orbital.exe" (one folder, no console window).
 #
-#   pyinstaller packaging/ptz-desk.spec                       -> without stabilization packages
-#   set PTZ_BUILD_FULL=1 & pyinstaller packaging/ptz-desk.spec -> with numpy and OpenCV
+#   pyinstaller packaging/orbital.spec                       -> without stabilization packages
+#   set PTZ_BUILD_FULL=1 & pyinstaller packaging/orbital.spec -> with numpy and OpenCV
 #
 # The release workflow builds both and lets packaging/split_components.py sort the files into
 # installer components, so that "Stabilization" can be left out at install time. numpy and cv2
@@ -27,9 +27,9 @@ pyz = PYZ(a.pure)  # noqa: F821
 exe = EXE(  # noqa: F821
     pyz, a.scripts, [],
     exclude_binaries=True,
-    name="PTZ Desk",
+    name="Orbital",
     console=False,
-    icon=os.path.join(SPECPATH, "ptz-desk.ico"),  # noqa: F821
+    icon=os.path.join(SPECPATH, "orbital.ico"),  # noqa: F821
     upx=False,
 )
-coll = COLLECT(exe, a.binaries, a.datas, name="PTZ Desk", upx=False)  # noqa: F821
+coll = COLLECT(exe, a.binaries, a.datas, name="Orbital", upx=False)  # noqa: F821

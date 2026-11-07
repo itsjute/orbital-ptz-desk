@@ -1,15 +1,23 @@
-# PTZ Desk
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <img src="docs/logo-light.svg" alt="Orbital" height="96">
+  </picture>
+</h1>
 
-A browser-based control desk for network PTZ cameras: live video, smooth joystick moves, straight
+A control desk for network PTZ cameras for network PTZ cameras: live video, smooth joystick moves, straight
 preset moves, focus pulling, exposure control, recording and post stabilization – in its own app
 window on your computer, with no cloud involved. Windows installer on the
 [releases page](https://github.com/itsjute/ptz-desk/releases); runs from source on any system with Python.
 
-![PTZ Desk: live video with joystick, zoom and focus rockers, focus and exposure controls, actions and presets](docs/screenshot.png)
+![Orbital: live video with joystick, zoom and focus rockers, focus and exposure controls, actions and presets](docs/screenshot.png)
 
 It was built to film stage performances from the back of a room with a PoE PTZ camera, where
 every pan has to look calm on the recording and every control has to be within reach without
 scrolling.
+
+> Orbital was called *PTZ Desk* up to version 1.0. Updating keeps all settings: they move from
+> `%APPDATA%\PTZ Desk` to `%APPDATA%\Orbital` on the first start.
 
 > Developed and tested with a **TONGVEO 4K AI PTZ** (20× optical zoom, HDMI/USB 3/LAN/PoE).
 > Many OEM PTZ cameras share its web API, ONVIF and VISCA-over-IP implementation, so others may
@@ -74,25 +82,25 @@ Everything else lives in a settings dialog (gear button, top right) with tabs on
 
 ## Installation (Windows)
 
-1. Download `PTZ-Desk-<version>-Setup.exe` from the [releases page](https://github.com/itsjute/ptz-desk/releases)
+1. Download `Orbital-<version>-Setup.exe` from the [releases page](https://github.com/itsjute/ptz-desk/releases)
    and run it. The installer is not code-signed, so Windows SmartScreen warns about an unknown
    publisher – choose *More info → Run anyway*. No admin rights are needed.
 2. Choose the components:
 
    | Component | Size | What for |
    |---|---|---|
-   | PTZ Desk | required | the app and the video service [go2rtc](https://github.com/AlexxIT/go2rtc) |
+   | Orbital | required | the app and the video service [go2rtc](https://github.com/AlexxIT/go2rtc) |
    | FFmpeg | optional | audio inputs of this computer (e.g. a USB audio interface), recording details; needed for stabilization |
    | Stabilization | optional | NumPy and OpenCV for post stabilization of recordings |
 
    Run the installer again at any time to add or remove components; settings are kept.
-3. Start **PTZ Desk** from the Start menu. On first start the settings open at *Camera*: enter
+3. Start **Orbital** from the Start menu. On first start the settings open at *Camera*: enter
    the camera's IP address, user and password and press *Save and connect*.
    When Windows Firewall asks about go2rtc, allow access for private networks.
 
-PTZ Desk opens in its own window (Microsoft Edge WebView2, part of Windows 10/11). Closing the
+Orbital opens in its own window (Microsoft Edge WebView2, part of Windows 10/11). Closing the
 window stops the camera, the recording (after asking) and go2rtc. Settings and state live in
-`%APPDATA%\PTZ Desk`; uninstalling leaves them there. For a **portable** copy, unpack the
+`%APPDATA%\Orbital`; uninstalling leaves them there. For a **portable** copy, unpack the
 `…-portable.zip` from the releases page – it keeps everything in its own folder.
 
 The camera must be reachable on your network and should have **ONVIF** and **VISCA over IP**
@@ -137,14 +145,14 @@ and take effect at once. They are stored in `config.ini` in the data folder (see
 | `[server]` | `port` | port of the control page (8765) |
 | | `local_only` | `yes`: page only reachable on this computer; `no`: also from other devices on your network |
 | | `open_browser` | `server.py` only: open the page in the browser on start |
-| `[recording]` | `folder` | target folder (empty: *Videos/PTZ Desk* in your user folder) |
+| `[recording]` | `folder` | target folder (empty: *Videos/Orbital* in your user folder) |
 | | `split_minutes` | start a new file every N minutes (0 = one file) |
 | | `stream` | `main` (full resolution) or `sub` |
 
 Everything you set in the page (curves, preset names, learned targets, calibrated speeds) is
 stored in small JSON files in the data folder and survives restarts and updates. The data folder
-is `%APPDATA%\PTZ Desk` for the installed app, the program folder for a portable copy and the
-folder of `server.py` when run from source (override with the environment variable `PTZ_DESK_DATA`):
+is `%APPDATA%\Orbital` for the installed app, the program folder for a portable copy and the
+folder of `server.py` when run from source (override with the environment variable `ORBITAL_DATA`):
 
 | File | Content |
 |---|---|
@@ -154,7 +162,7 @@ folder of `server.py` when run from source (override with the environment variab
 | `visca_speeds.json` | calibrated speed per VISCA level and axis |
 | `click_scale.json` | learned image scale per zoom position for double-click aiming |
 | `audio.json` | chosen audio source |
-| `ptz-desk.log` | server log (also shown under *Settings → Log*) |
+| `orbital.log` | server log (also shown under *Settings → Log*) |
 
 Browser-side preferences (stream, guides, rotation, key and wheel settings) are kept in the
 browser's local storage.
@@ -202,7 +210,7 @@ flowchart LR
 
 The server binds to `127.0.0.1` unless `local_only = no`. It only answers requests whose
 `Host` header is `localhost` or an IP address (against DNS rebinding) and only accepts POSTs
-carrying the custom `X-PTZ-Desk` header that the page sends. There is no authentication of its
+carrying the custom `X-Orbital` header that the page sends. There is no authentication of its
 own – only set `local_only = no` on a network you trust. `config.ini` holds the camera password
 in plain text (readable by your user account only, like the rest of `%APPDATA%`) and is excluded
 from version control. The page never receives the password back; RTSP addresses are shown masked.
@@ -210,7 +218,7 @@ from version control. The page never receives the password back; RTSP addresses 
 ## Troubleshooting
 
 - **What is going on?** *Settings → Log* shows everything the server reports, including go2rtc's
-  own messages; *Open data folder* leads to `ptz-desk.log`.
+  own messages; *Open data folder* leads to `orbital.log`.
 - **"Video failed"** – most often Windows Firewall blocks go2rtc; allow it for private networks.
   If the camera sends H.265, switch it to H.264 or use the sub stream.
 - **Camera not connected** – check IP, user and password under *Settings → Camera*; *Settings →
@@ -229,7 +237,8 @@ from version control. The page never receives the password back; RTSP addresses 
 
 - [go2rtc](https://github.com/AlexxIT/go2rtc) by Alexey Khit (MIT) – RTSP to WebRTC.
 - [Lucide](https://lucide.dev) icons (ISC) – embedded inline, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-- Fonts Barlow and JetBrains Mono (SIL Open Font License), loaded from Google Fonts.
+- Fonts Barlow and JetBrains Mono (SIL Open Font License), loaded from Google Fonts; the logo's
+  lettering is set in Poppins (SIL Open Font License) and embedded as outlines.
 
 ## License
 

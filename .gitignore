@@ -41,8 +41,8 @@ __pycache__/
 *.webm
 
 # App mode: log, window profile (source runs keep their data next to the code)
-ptz-desk.log
-ptz-desk.log.old
+orbital.log
+orbital.log.old
 config.ini.tmp
 webview/
 browser/

@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title PTZ Desk
+title Orbital
 cd /d "%~dp0"
 where py >nul 2>nul
 if %errorlevel%==0 (

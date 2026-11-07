@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PTZ Desk server.
+Orbital server.
 
 Connects the control page in the browser with the PTZ camera on the network:
   * pan, tilt, zoom, focus, exposure, home and presets (camera web API, ONVIF, VISCA)
@@ -10,7 +10,7 @@ Connects the control page in the browser with the PTZ camera on the network:
 Runs on Python 3.8+ with the standard library only; stabilization additionally needs
 numpy and opencv-python-headless (installable from the page).
 Run from source, settings and state live next to this file (config.ini, *.json). The installed
-app keeps them in %APPDATA%\\PTZ Desk instead (or next to the program if a config.ini is there).
+app keeps them in %APPDATA%\\Orbital instead (or next to the program if a config.ini is there).
 `python server.py` serves the page for any browser; `python app.py` opens it in its own window.
 """
 import base64
@@ -50,17 +50,25 @@ APP_DIR = os.path.dirname(os.path.abspath(sys.executable)) if FROZEN else HERE
 
 def _data_dir():
     """Where settings, state files and the log live."""
-    env = os.environ.get("PTZ_DESK_DATA", "").strip()
+    env = (os.environ.get("ORBITAL_DATA") or os.environ.get("PTZ_DESK_DATA") or "").strip()
     if env:
         return os.path.abspath(os.path.expanduser(env))
     if not FROZEN or any(os.path.exists(os.path.join(APP_DIR, n)) for n in ("config.ini", "portable.txt")):
         return APP_DIR                                 # from source, or a portable copy of the app
     home = os.path.expanduser("~")
     if os.name == "nt":
-        return os.path.join(os.environ.get("APPDATA") or home, "PTZ Desk")
-    if sys.platform == "darwin":
-        return os.path.join(home, "Library", "Application Support", "PTZ Desk")
-    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "ptz-desk")
+        base, names = os.environ.get("APPDATA") or home, ("Orbital", "PTZ Desk")
+    elif sys.platform == "darwin":
+        base, names = os.path.join(home, "Library", "Application Support"), ("Orbital", "PTZ Desk")
+    else:
+        base, names = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), ("orbital", "ptz-desk")
+    new, old = (os.path.join(base, n) for n in names)
+    if not os.path.exists(new) and os.path.isdir(old):
+        try:
+            os.replace(old, new)                       # the app was called "PTZ Desk" before 1.1
+        except OSError:
+            return old
+    return new
 
 
 DATA_DIR = _data_dir()
@@ -68,7 +76,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 INI = os.path.join(DATA_DIR, "config.ini")
 LEGACY_INI = os.path.join(DATA_DIR, "kamera.ini")
 PAGE = os.path.join(RES_DIR, "index.html")
-LOG_PATH = os.path.join(DATA_DIR, "ptz-desk.log")
+LOG_PATH = os.path.join(DATA_DIR, "orbital.log")
 GO2RTC_API = "http://127.0.0.1:1984"
 
 
@@ -99,7 +107,7 @@ def find_tool(name):
 
 # --------------------------------------------------------------------------- log
 # Everything the server reports goes to the console (if there is one), into a ring buffer that
-# the page shows under Settings -> Log, and into ptz-desk.log in the data folder.
+# the page shows under Settings -> Log, and into orbital.log in the data folder.
 
 _LOG = collections.deque(maxlen=4000)
 _LOG_LOCK = threading.Lock()
@@ -246,6 +254,12 @@ def default_rtsp(ip, which):
     return f"rtsp://{ip}:554/live/{'av0' if which == 'main' else 'av1'}" if ip else ""
 
 
+def default_rec_dir():
+    videos = os.path.join(os.path.expanduser("~"), "Videos")
+    new, old = os.path.join(videos, "Orbital"), os.path.join(videos, "PTZ Desk")
+    return old if os.path.isdir(old) and not os.path.isdir(new) else new   # keep using it after the rename
+
+
 def load_config(quiet=False):
     cp = read_ini()
     if not os.path.exists(INI) and not quiet:
@@ -260,7 +274,7 @@ def load_config(quiet=False):
         "rtsp_main": c["rtsp_main"].strip() or default_rtsp(c["ip"].strip(), "main"),
         "rtsp_sub": c["rtsp_sub"].strip() or default_rtsp(c["ip"].strip(), "sub"),
         "port": int(s["port"]), "local_only": yes(s["local_only"]), "open_browser": yes(s["open_browser"]),
-        "rec_dir": os.path.expandvars(os.path.expanduser(r["folder"].strip())) or os.path.join(os.path.expanduser("~"), "Videos", "PTZ Desk"),
+        "rec_dir": os.path.expandvars(os.path.expanduser(r["folder"].strip())) or default_rec_dir(),
         "rec_minutes": int(r["split_minutes"] or 0), "rec_stream": stream,
         "configured": os.path.exists(INI),
     }
@@ -303,7 +317,7 @@ def config_view():
         "server": {"port": int(sv["port"]), "local_only": sv["local_only"].strip().lower() in ("yes", "true", "1", "on", "ja")},
         "recording": {"folder": r["folder"], "split_minutes": int(r["split_minutes"] or 0),
                       "stream": LEGACY_VALUES.get(r["stream"].strip().lower(), r["stream"].strip().lower()) or "main"},
-        "defaults": {"rec_dir": os.path.join(os.path.expanduser("~"), "Videos", "PTZ Desk")},
+        "defaults": {"rec_dir": default_rec_dir()},
         "configured": os.path.exists(INI), "file": INI, "data_dir": DATA_DIR,
     }
 
@@ -361,13 +375,13 @@ def save_config(data):
 
     tmp = INI + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
-        f.write("; PTZ Desk settings – edited in the app (Settings → Camera) or by hand.\n"
+        f.write("; Orbital settings – edited in the app (Settings → Camera) or by hand.\n"
                 "; See config.example.ini for an explanation of every option.\n")
         cp.write(f)
     os.replace(tmp, INI)
     old, new = App.cfg, load_config(quiet=True)
     restart = apply_config(old, new)
-    log("Settings saved" + (" – restart PTZ Desk for the new page port/network setting." if restart else "."))
+    log("Settings saved" + (" – restart Orbital for the new page port/network setting." if restart else "."))
     return {"ok": True, "restart_required": restart, "config": config_view()}
 
 
@@ -1597,9 +1611,9 @@ class Video:
                 log("An old go2rtc from an earlier start is still running – stopping it.")
                 self._exit_running()
             elif self._ours(info.get("config_path")):
-                # left over from another PTZ Desk copy (source folder, portable, installed) – only
+                # left over from another Orbital copy (source folder, portable, installed) – only
                 # one of them can run at a time (same page port), so that one is not in use
-                log(f"go2rtc of another PTZ Desk copy is still running ({info.get('config_path')}) – stopping it.")
+                log(f"go2rtc of another Orbital copy is still running ({info.get('config_path')}) – stopping it.")
                 self._exit_running()
             if self._api_ok():
                 # Another go2rtc (e.g. left over from an earlier start, or an older version that does not
@@ -1617,7 +1631,7 @@ class Video:
             self.state = f"{os.path.basename(self.exe)} is missing (put it next to the program)"
             return
         q = lambda s: '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
-        lines = ["# Rewritten by PTZ Desk on every start. Make changes in config.ini.",
+        lines = ["# Rewritten by Orbital on every start. Make changes in config.ini.",
                  "api:", '  listen: "127.0.0.1:1984"', "rtsp:", '  listen: ""', "webrtc:", '  listen: ":8555"',
                  "log:", "  level: warn", "  format: text", "streams:"]
         for k, srcs in self.streams.items():
@@ -1654,13 +1668,13 @@ class Video:
 
     @staticmethod
     def _ours(path):
-        """Was this go2rtc config written by PTZ Desk (any version)?"""
+        """Was this go2rtc config written by Orbital (any version)?"""
         try:
             if not path or os.path.basename(path).lower() != "go2rtc.yaml":
                 return False
             with open(path, encoding="utf-8", errors="replace") as f:
                 head = f.read(400)
-            return "PTZ Desk" in head or "kamera.ini" in head or "config.ini" in head
+            return "Orbital" in head or "Orbital" in head or "kamera.ini" in head or "config.ini" in head
         except OSError:
             return False
 
@@ -2278,7 +2292,7 @@ class Smoother:
             return self.status()
         if FROZEN:
             self.pip = {"running": False, "log": "",
-                        "error": "This copy was installed without the stabilization component – run the PTZ Desk "
+                        "error": "This copy was installed without the stabilization component – run the Orbital "
                                  "installer again and tick “Stabilization”."}
             return self.status()
         self.pip = {"running": True, "log": "", "error": ""}
@@ -2439,7 +2453,7 @@ def is_safe_host(host):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "PTZDesk/1.0"
+    server_version = "Orbital/1.0"
 
     def log_message(self, fmt, *args):
         pass
@@ -2463,7 +2477,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(403, {"error": "Host not allowed"})
             return False
         App.last_request = time.monotonic()
-        if post and self.headers.get("X-PTZ-Desk") != "1":
+        if post and self.headers.get("X-Orbital") != "1":
             self._send(403, {"error": "Request not from the control page"})
             return False
         return True
@@ -2764,7 +2778,7 @@ def boot():
     """Create everything and open the HTTP server (not serving yet). Video and camera connect in
     the background so that the page is there at once. Returns (server, url)."""
     setup_logging()
-    log(f"PTZ Desk {VERSION} – data folder {DATA_DIR}")
+    log(f"Orbital {VERSION} – data folder {DATA_DIR}")
     migrate_legacy()
     App.cfg = cfg = load_config()
     App.cam = Onvif(cfg)
@@ -2787,7 +2801,7 @@ def boot():
     try:
         srv = ThreadingHTTPServer((bind, cfg["port"]), Handler)
     except OSError as e:
-        raise PortInUse(f"Port {cfg['port']} is in use ({e}). Is PTZ Desk already running? "
+        raise PortInUse(f"Port {cfg['port']} is in use ({e}). Is Orbital already running? "
                         "Otherwise pick another page port in config.ini.")
     url = f"http://localhost:{cfg['port']}/"
     App.booting = True

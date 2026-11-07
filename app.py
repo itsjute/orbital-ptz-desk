@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-PTZ Desk as a desktop app: starts the server in the background and shows the control page in
+Orbital as a desktop app: starts the server in the background and shows the control page in
 its own window (pywebview, i.e. WebView2 on Windows). No console window, no browser tab.
 
     python app.py           (needs: pip install pywebview)
 
 If pywebview or the WebView2 runtime is missing, the page opens in an Edge or Chrome app window
 instead; if neither exists, in the default browser.
-The installer from the GitHub releases bundles all of this into "PTZ Desk.exe".
+The installer from the GitHub releases bundles all of this into "Orbital.exe".
 """
 import os
 import shutil
@@ -20,12 +20,12 @@ import webbrowser
 SELFTEST = "--selftest" in sys.argv
 if SELFTEST:   # build check: own throw-away data folder
     import tempfile
-    os.environ["PTZ_DESK_DATA"] = tempfile.mkdtemp(prefix="ptz-desk-selftest-")
+    os.environ["ORBITAL_DATA"] = tempfile.mkdtemp(prefix="orbital-selftest-")
 
 import server
 from server import log
 
-TITLE = "PTZ Desk"
+TITLE = "Orbital"
 
 
 # --------------------------------------------------------------------------- small platform helpers
@@ -44,13 +44,13 @@ def message(text, error=False):
 
 
 def single_instance():
-    """Windows: if PTZ Desk is already running, bring its window to the front and return False."""
+    """Windows: if Orbital is already running, bring its window to the front and return False."""
     if os.name != "nt":
         return True
     try:
         import ctypes
         k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
-        single_instance.mutex = k32.CreateMutexW(None, False, "Local\\PTZDesk.SingleInstance")
+        single_instance.mutex = k32.CreateMutexW(None, False, "Local\\Orbital.SingleInstance")
         if k32.GetLastError() != 183:  # ERROR_ALREADY_EXISTS
             return True
         hwnd = u32.FindWindowW(None, TITLE)
@@ -67,7 +67,7 @@ def taskbar_identity():
     if os.name == "nt":
         try:
             import ctypes
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("PTZDesk.App")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Orbital.App")
         except Exception:  # noqa
             pass
 
@@ -145,7 +145,7 @@ def run_window(url):
     def closing():
         if server.App.rec and server.App.rec.active and not api._force:
             # let the page ask (styled dialog); it calls api.quit() when confirmed
-            threading.Thread(target=lambda: win.evaluate_js("window.ptzDeskCloseRequest && window.ptzDeskCloseRequest()"),
+            threading.Thread(target=lambda: win.evaluate_js("window.orbitalCloseRequest && window.orbitalCloseRequest()"),
                              daemon=True).start()
             return False
         return True
@@ -157,7 +157,7 @@ def run_window(url):
     except Exception:  # noqa
         pass
     kwargs = {"private_mode": False, "storage_path": os.path.join(server.DATA_DIR, "webview"),
-              "debug": bool(os.environ.get("PTZ_DESK_DEBUG"))}
+              "debug": bool(os.environ.get("ORBITAL_DEBUG"))}
     if os.name == "nt":
         kwargs["gui"] = "edgechromium"   # never fall back to the old Internet Explorer engine
     server.APP_WINDOW["kind"] = "window"
@@ -269,7 +269,7 @@ def main():
         message(str(e), error=True)
         return 1
     except Exception as e:  # noqa
-        message(f"PTZ Desk could not start:\n{type(e).__name__}: {e}\n\nDetails: {server.LOG_PATH}", error=True)
+        message(f"Orbital could not start:\n{type(e).__name__}: {e}\n\nDetails: {server.LOG_PATH}", error=True)
         return 1
     server.on_window_close(server.shutdown)   # when started from a console
     threading.Thread(target=srv.serve_forever, name="http", daemon=True).start()
@@ -277,7 +277,7 @@ def main():
         if not run_window(url) and not run_browser_app(url):
             webbrowser.open(url)
             if os.name == "nt":
-                message("PTZ Desk is running and opened in your browser.\n\nClick OK to quit PTZ Desk "
+                message("Orbital is running and opened in your browser.\n\nClick OK to quit Orbital "
                         "(this stops a running recording).")
             else:
                 log("Opened in your browser. Quit with Ctrl+C.")
