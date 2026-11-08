@@ -469,6 +469,49 @@ body.midgrab, body.midgrab *{cursor:move!important}
 .pedrow .picon.set{color:var(--accent);border-color:var(--accent)}
 .pedrow .iconbtn.confirm{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 .preseted > .note{margin-top:10px}
+
+/* ===== presets as square buttons over the video ===== */
+.stage{container-type:inline-size}
+.pbar{--psz:clamp(44px, 5.2cqw, 78px);position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:4;display:flex;align-items:flex-end;gap:6px;
+  padding:6px;border-radius:12px;background:rgba(9,11,14,.38);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);color:var(--stage-fg)}
+.pbar .presets{display:flex;gap:6px}
+.pbar .posw{position:relative;width:var(--psz);height:var(--psz);flex:none;border:1px solid rgba(231,235,240,.2);border-radius:9px;
+  background:rgba(9,11,14,.45);overflow:hidden}
+.pbar .posw .pos{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  padding:4px 5px;border:0;border-radius:0;background:transparent;color:var(--stage-fg);text-align:center}
+.pbar .pos b{position:static;font:600 calc(var(--psz) * .3)/1 var(--f-display);color:var(--stage-fg)}
+.pbar .pos .pn{max-width:100%;font:500 clamp(9px, calc(var(--psz) * .15), 11.5px)/1.15 var(--f-body) !important;color:var(--stage-muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pbar .pos.hasicon b{position:absolute;top:3px;left:5px;font-size:10px;color:var(--stage-muted)}
+.pbar .pos.hasicon .pi{width:calc(var(--psz) * .36);height:calc(var(--psz) * .36)}
+.pbar .pos.vacant{opacity:1}
+.pbar .pos.vacant b{color:var(--stage-muted);opacity:.6}
+.pbar .pos.vacant .pn{display:none}
+.pbar .pos .gd{position:absolute;top:5px;right:5px;margin:0;width:5px;height:5px}
+.pbar .pos .pd{position:absolute;left:5px;right:auto;bottom:3px;margin:0;font:500 9px/1 var(--f-mono);color:var(--stage-muted)}
+.pbar .pos.hasicon .pn{padding:0 2px}
+@container (max-width:1100px){ .pbar .pos .pd{display:none} }
+.pbar .pos:disabled{opacity:1;cursor:default}
+.pbar .posw .pset{position:absolute;right:2px;bottom:2px;width:20px;height:20px;border-radius:5px;background:transparent;color:var(--stage-muted);opacity:.55}
+.pbar .posw .pset::before{display:none}
+.pbar .posw .pset .ic{width:13px;height:13px}
+.pbar .posw:hover .pset{opacity:1}
+.pbar .posw .pset:hover:not(:disabled){background:rgba(231,235,240,.16);color:var(--stage-fg)}
+.pbar .posw .pset.saved{background:var(--ok);color:#fff;opacity:1}
+.pbar .posw:has(.pos:enabled):hover{border-color:var(--accent)}
+.pbar .posw.is-at{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 38%, rgba(9,11,14,.55));box-shadow:none}
+.pbar .posw.is-at .pos b,.pbar .posw.is-at .pos .pn{color:var(--stage-fg)}
+.pbar .posw.is-at .pos.hasicon .pi{color:var(--stage-fg)}
+.pbar .posw.is-moving{border-color:var(--accent);animation:pmove2 .9s ease-in-out infinite alternate}
+@keyframes pmove2{from{background:rgba(9,11,14,.45)}to{background:color-mix(in srgb, var(--accent) 38%, rgba(9,11,14,.55))}}
+@media (prefers-reduced-motion:reduce){.pbar .posw.is-moving{animation:none;background:color-mix(in srgb, var(--accent) 25%, rgba(9,11,14,.55))}}
+.pbar .posw.is-left{border:1px dashed var(--accent)}
+.pbar .pedit{align-self:stretch;width:calc(var(--psz) * .5);min-width:30px;display:grid;place-items:center;border:1px solid rgba(231,235,240,.2);
+  border-radius:9px;background:rgba(9,11,14,.45);color:var(--stage-fg);cursor:pointer;padding:0}
+.pbar .pedit:hover{border-color:var(--accent);color:var(--accent)}
+.pbar .pedit .ic{width:16px;height:16px}
+.stage .toast{bottom:calc(clamp(44px, 5.2cqw, 78px) + 30px)}
+.ped-head h2 small{font:500 12px var(--f-mono);color:var(--muted);margin-left:8px}
 </style>
 </head>
 <body>
@@ -491,6 +534,10 @@ body.midgrab, body.midgrab *{cursor:move!important}
         <div class="hud-tl"><span class="chip rec" id="recPill" hidden>REC 00:00</span><span class="chip" id="loupeChip" hidden>Loupe 3×</span><span class="chip clip" id="clipChip" hidden title="Share of the image that clips to pure white">Overexposed</span></div>
       </div>
       <div class="toast" id="lastMsg" role="status" hidden></div>
+      <div class="pbar" id="presetPanel" role="group" aria-label="Presets">
+        <div class="presets" id="presets"></div>
+        <button class="pedit" id="pEdit" type="button" title="Edit presets: names, icons, move times" aria-label="Edit presets"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button>
+      </div>
       <div class="empty" id="empty">
         <div>
           <h2 id="emptyTitle">No image yet</h2>
@@ -575,11 +622,7 @@ body.midgrab, body.midgrab *{cursor:move!important}
       </div>
     </section>
 
-    <section class="panel ppanel" id="presetPanel">
-      <h2>Presets <small id="presetInfo"></small><button class="iconbtn" id="pEdit" type="button" title="Edit presets: names, icons, move times" aria-label="Edit presets"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button></h2>
-      <div class="presets" id="presets"></div>
-    </section>
-  </aside>
+      </aside>
 
 </main>
 
@@ -886,7 +929,7 @@ body.midgrab, body.midgrab *{cursor:move!important}
 </dialog>
 
 <dialog class="confirm preseted" id="pedDlg" aria-labelledby="pedTitle">
-  <div class="ped-head"><h2 id="pedTitle">Presets</h2><button class="iconbtn" id="pedClose" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+  <div class="ped-head"><h2 id="pedTitle">Presets <small id="presetInfo"></small></h2><button class="iconbtn" id="pedClose" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
   <div class="pedcols" aria-hidden="true"><span></span><span>Icon</span><span>Name</span><span>Move time</span><span>Save</span></div>
   <div class="pedlist" id="pedList"></div>
   <p class="note">Changes are kept at once. <b>Save</b> stores the camera's current view in that slot (tap twice to overwrite). The move time applies to straight moves; <i>Standard</i> uses Settings → Presets. The small save button next to each preset tile does the same with a double-click.</p>
@@ -2087,22 +2130,7 @@ E.auListen.addEventListener('change', () => { store.set('audio-listen', E.auList
 
 /* ---------- size the controls to the video: the joystick takes the remaining height ---------- */
 const CTRL = document.querySelector('.panel.ctrl'), CONTROLS = document.querySelector('.controls');
-const PPANEL = document.getElementById('presetPanel'), STAGECOL = document.querySelector('.stagecol');
-function placePresets(){
-  // Presets go under the video as one strip when the window is taller than the video needs
-  // (e.g. 16:10 screens) – that leaves more room for the joystick in the column.
-  const below = PPANEL.parentElement === STAGECOL;
-  let want = false;
-  if (matchMedia('(min-width: 900px)').matches ){
-    const spare = innerHeight - E.stage.getBoundingClientRect().bottom - 16;
-    want = spare >= (below ? PPANEL.offsetHeight : 56) + 12;
-  }
-  if (want !== below) (want ? STAGECOL : CONTROLS).append(PPANEL);
-  // with the strip below the video, the column reaches down to the strip's bottom edge
-  CONTROLS.style.height = want ? `${Math.round(PPANEL.getBoundingClientRect().bottom - E.stage.getBoundingClientRect().top)}px` : '';
-}
 function fitControls(){
-  placePresets();
   if (!matchMedia('(min-width: 900px)').matches){ ['--joy', '--rh'].forEach(k => CONTROLS.style.setProperty(k, '170px')); CONTROLS.style.setProperty('--rw', '48px'); return; }
   const cs = getComputedStyle(CTRL);
   let h = CTRL.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 22;   // minus the label row

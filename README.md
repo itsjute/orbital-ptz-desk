@@ -44,10 +44,10 @@ exactly as tall as the video – the joystick grows and shrinks with the availab
   remainder once and learns the image scale per zoom position.
 - **Keyboard:** arrow keys (combinable), <kbd>+</kbd>/<kbd>−</kbd> zoom, <kbd>N</kbd>/<kbd>F</kbd>
   focus, <kbd>L</kbd> loupe, <kbd>H</kbd> home, <kbd>1</kbd>–<kbd>9</kbd> presets.
-- **Presets 1–9** with a name and/or an icon (any of the ~1,500 [Lucide](https://lucide.dev) icons) and
+- **Presets 1–9** as square buttons over the bottom edge of the video, with a name and/or an icon (any of the ~1,500 [Lucide](https://lucide.dev) icons) and
   their own move time (2–60 s, or as fast as possible). The tile shows where the camera is: it pulses
   on the way, is highlighted at the preset and gets a dashed outline once you move away by hand.
-  Double-click the small save button next to a preset to store the current view there on the fly;
+  Double-click the small save button in a preset's corner to store the current view there on the fly;
   the pencil opens the preset editor. Recalled presets move on a **straight, smooth line** – the
   server drives the move over VISCA and corrects it ten times a second, because the camera's own
   preset recall finishes tilt early and draws a bent path. Zoom and locked focus are restored too.
