@@ -1632,7 +1632,10 @@ class Video:
             return
         q = lambda s: '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
         lines = ["# Rewritten by Orbital on every start. Make changes in config.ini.",
-                 "api:", '  listen: "127.0.0.1:1984"', "rtsp:", '  listen: ""', "webrtc:", '  listen: ":8555"',
+                 "api:", '  listen: "127.0.0.1:1984"',
+                 # go2rtc's ffmpeg sources (audio devices) hand their output back over RTSP, so the
+                 # RTSP server must run – but only on this computer
+                 "rtsp:", '  listen: "127.0.0.1:18554"', "webrtc:", '  listen: ":8555"',
                  "log:", "  level: warn", "  format: text", "streams:"]
         for k, srcs in self.streams.items():
             lines.append(f"  {k}:")
