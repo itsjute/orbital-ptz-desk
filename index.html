@@ -1988,7 +1988,7 @@ function renderPost(){
     const tr = document.createElement('tr');
     const c1 = document.createElement('td'); const nm = document.createElement('span'); nm.className = 'fname'; nm.textContent = f.name;
     const sub = document.createElement('span'); sub.className = 'sub2';
-    sub.textContent = f.recording ? 'recording right now' : (f.smooth ? `stabilized: ${f.smooth}` : f.time);
+    sub.textContent = f.recording ? 'recording right now' : f.indexing ? 'making it seekable …' : (f.smooth ? `stabilized: ${f.smooth}` : f.time);
     if (f.smooth && !f.recording) sub.classList.add('ok');
     c1.append(nm, sub);
     const c2 = document.createElement('td'); c2.textContent = mmss(f.duration_s);
@@ -1997,9 +1997,16 @@ function renderPost(){
     const c5 = document.createElement('td'); c5.className = 'act';
     const b = document.createElement('button'); b.type = 'button'; b.className = 'btn small' + (f.smooth ? '' : ' primary');
     b.textContent = f.smooth ? 'Stabilize again' : 'Stabilize';
-    b.disabled = f.recording || g.running || !g.ready;
+    b.disabled = f.recording || f.indexing || g.running || !g.ready;
     b.addEventListener('click', () => startGl(f.name));
     c5.append(b);
+    if (f.fragmented){   // recorded before automatic indexing: players seek badly in it
+      const k = document.createElement('button'); k.type = 'button'; k.className = 'btn small'; k.textContent = 'Make seekable';
+      k.title = 'Rewrite the file (no re-encoding) so players can jump in it without losing the sound';
+      k.disabled = !g.ffmpeg.ok;
+      k.addEventListener('click', () => api('/api/recordings/seekable', {file: f.name}).then(() => { log(`Making ${f.name} seekable …`); setTimeout(loadPost, 800); }).catch(e => log(e.message, 'err')));
+      c5.append(k);
+    }
     if (f.smooth){ const z = document.createElement('button'); z.type = 'button'; z.className = 'btn small'; z.textContent = 'Show'; z.addEventListener('click', () => api('/api/recordings/reveal', {file: f.smooth}).catch(e => log(e.message, 'err'))); c5.append(z); }
     tr.append(c1, c2, c3, c4, c5); E.pfBody.append(tr);
   });

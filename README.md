@@ -58,7 +58,7 @@ exactly as tall as the video – the joystick grows and shrinks with the availab
   exposure compensation, shutter and gain. An **overexposure warning** appears on the image when
   parts of it clip to white – useful with spotlights on a dark stage.
 - **Recording** on the server in original quality (no re-encoding), split into files of a set
-  length; **stills** (saved to the recording folder in the app), composition **guides**
+  length; each finished file is rewritten into an ordinary, seekable MP4 (still no re-encoding); **stills** (saved to the recording folder in the app), composition **guides**
   (crosshair, thirds), **180° rotation**, full screen.
 
 ### Settings dialog

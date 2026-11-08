@@ -1917,6 +1917,10 @@ class Recorder:
         self.error = ""
         self.lock = threading.Lock()
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self.indexing = set()              # files being rewritten into a seekable MP4
+        self.todo = []
+        self.todo_cv = threading.Condition()
+        threading.Thread(target=self._index_worker, name="mp4-index", daemon=True).start()
 
     def free(self):
         try:
@@ -2009,7 +2013,81 @@ class Recorder:
                             self.files.remove(name)
                     except OSError:
                         pass
+                elif got:
+                    self.make_seekable(name)
         self.file = None
+
+    # go2rtc delivers fragmented MP4 – one small fragment per frame, no index. That stays playable
+    # even if the recording is cut off, but players seek badly in it (VLC loses the sound after a
+    # jump). Once a file is complete it is rewritten without re-encoding into an ordinary MP4.
+    @staticmethod
+    def is_fragmented(path):
+        try:
+            with open(path, "rb") as f:
+                head = f.read(2 * 1024 ** 2)
+        except OSError:
+            return False
+        return b"moof" in head and b"mvex" in head
+
+    def make_seekable(self, path):
+        with self.todo_cv:
+            if path not in self.todo and path not in self.indexing:
+                self.todo.append(path)
+                self.todo_cv.notify()
+
+    def _index_worker(self):
+        while True:
+            with self.todo_cv:
+                while not self.todo:
+                    self.todo_cv.wait()
+                path = self.todo.pop(0)
+                self.indexing.add(path)
+            try:
+                self._index(path)
+            except Exception as e:  # noqa
+                log(f"Could not make {os.path.basename(path)} seekable: {e}")
+            finally:
+                self.indexing.discard(path)
+
+    def _index(self, path):
+        ff = App.smooth.ff if App.smooth else None
+        if not ff:
+            log(f"{os.path.basename(path)}: ffmpeg is missing – the file stays as recorded (seeking may be unreliable).")
+            return
+        if not self.is_fragmented(path):
+            return
+        tmp = path[:-4] + ".index.part.mp4"
+        size = os.path.getsize(path)
+        t0 = time.monotonic()
+        flags = NOWIN | (0x4000 if os.name == "nt" else 0)   # BELOW_NORMAL_PRIORITY_CLASS
+        r = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-i", path, "-map", "0", "-c", "copy",
+                            "-movflags", "+faststart", "-f", "mp4", tmp], capture_output=True, creationflags=flags)
+        def duration(f):
+            out = subprocess.run([ff, "-hide_banner", "-i", f], capture_output=True, creationflags=NOWIN).stderr
+            m = re.search(rb"Duration: (\d+):(\d+):([\d.]+)", out)
+            return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else None
+        ok = r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > size * 0.5
+        if ok:
+            d_in, d_out = duration(path), duration(tmp)
+            ok = d_in is not None and d_out is not None and abs(d_in - d_out) < 1.5
+        if not ok:
+            err = (r.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise OSError(err[-1] if err else f"ffmpeg exit code {r.returncode}")
+        st = os.stat(path)
+        try:
+            os.replace(tmp, path)
+            os.utime(path, (st.st_atime, st.st_mtime))      # keep the recording time
+        except OSError as e:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise OSError(f"the file is in use ({e}) – try again later")
+        log(f"{os.path.basename(path)} is now seekable ({time.monotonic() - t0:.0f} s).")
 
 
 # --------------------------------------------------------------------------- motion calibration
@@ -2457,7 +2535,13 @@ class Smoother:
             smooth = next((n[:-4] + s for s in SMOOTH_SUFFIXES if os.path.exists(os.path.join(d, n[:-4] + s))), None)
             e = {"name": n, "mb": round(st.st_size / 1024 ** 2, 1),
                  "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime)),
-                 "recording": n == cur, "smooth": smooth}
+                 "recording": n == cur, "smooth": smooth,
+                 "indexing": p in self.rec.indexing or p in self.rec.todo}
+            if not e["recording"] and not e["indexing"]:
+                key = ("frag", p, st.st_size, st.st_mtime)
+                if key not in self._cache:
+                    self._cache[key] = Recorder.is_fragmented(p)
+                e["fragmented"] = self._cache[key]
             if not e["recording"] and i < 15:
                 e.update(self.info(p))
             out.append(e)
@@ -2709,6 +2793,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/recording/stop": lambda: App.rec.stop(wait=3),
             "/api/recording/folder": self._open_folder,
             "/api/recordings/reveal": lambda: self._reveal(data),
+            "/api/recordings/seekable": lambda: self._seekable(data),
             "/api/stabilize/start": lambda: App.smooth.start(str(data.get("file", "")), str(data.get("strength", "medium"))),
             "/api/stabilize/stop": App.smooth.stop,
             "/api/stabilize/install": App.smooth.install_deps,
@@ -2798,6 +2883,16 @@ class Handler(BaseHTTPRequestHandler):
         os.makedirs(App.rec.dir, exist_ok=True)
         open_path(App.rec.dir)
         return {"ok": True, "folder": App.rec.dir}
+
+    def _seekable(self, data):
+        n = os.path.basename(str(data.get("file", "")))
+        p = os.path.join(App.rec.dir, n)
+        if not n or not os.path.isfile(p):
+            raise ValueError("file not found")
+        if App.rec.active and App.rec.file and os.path.abspath(App.rec.file) == os.path.abspath(p):
+            raise ValueError("this file is still being recorded")
+        App.rec.make_seekable(p)
+        return {"ok": True}
 
     def _reveal(self, data):
         n = os.path.basename(str(data.get("file", "")))
