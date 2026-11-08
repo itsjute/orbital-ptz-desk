@@ -48,7 +48,8 @@ exactly as tall as the video – the joystick grows and shrinks with the availab
   their own move time (2–60 s, or as fast as possible). The tile shows where the camera is: it pulses
   on the way, is highlighted at the preset and gets a dashed outline once you move away by hand.
   Double-click the small save button in a preset's corner to store the current view there on the fly;
-  the pencil opens the preset editor. Recalled presets move on a **straight, smooth line** – the
+  the pencil opens the preset editor. Drag a preset onto another place to change the order – the
+  keys 1–9 follow the order on screen. Recalled presets move on a **straight, smooth line** – the
   server drives the move over VISCA and corrects it ten times a second, because the camera's own
   preset recall finishes tilt early and draws a bent path. Zoom and locked focus are restored too.
 - **Focus:** autofocus, lock, one-push focus (autofocus briefly, then lock), a focus rocker with
@@ -160,7 +161,7 @@ folder of `server.py` when run from source (override with the environment variab
 | File | Content |
 |---|---|
 | `curves.json` | motion curves and measured image speeds per level |
-| `presets.json` | preset names, icons, move times and their VISCA targets (pan, tilt, zoom, focus) |
+| `presets.json` | preset names, icons, move times, order and their VISCA targets (pan, tilt, zoom, focus) |
 | `glide.json` | settings for straight preset moves |
 | `visca_speeds.json` | calibrated speed per VISCA level and axis |
 | `click_scale.json` | learned image scale per zoom position for double-click aiming |

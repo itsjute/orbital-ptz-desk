@@ -512,6 +512,16 @@ body.midgrab, body.midgrab *{cursor:move!important}
 .pbar .pedit .ic{width:16px;height:16px}
 .stage .toast{bottom:calc(clamp(44px, 5.2cqw, 78px) + 30px)}
 .ped-head h2 small{font:500 12px var(--f-mono);color:var(--muted);margin-left:8px}
+
+/* drag and drop of presets */
+.pbar .posw[draggable="true"]{cursor:grab}
+.posw.dragging,.pedrow.dragging{opacity:.4}
+.pbar .posw.dropat{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.pedrow.dropat{box-shadow:0 -2px 0 var(--accent)}
+.pgrip{display:flex;align-items:center;justify-content:flex-end;gap:1px;cursor:grab;user-select:none}
+.pgrip .gi{width:15px;height:15px;color:var(--muted);opacity:.7}
+.pgrip:hover .gi{opacity:1;color:var(--fg)}
+.pedcols,.pedrow{grid-template-columns:36px 34px minmax(0,1fr) 112px 34px}
 </style>
 </head>
 <body>
@@ -932,7 +942,7 @@ body.midgrab, body.midgrab *{cursor:move!important}
   <div class="ped-head"><h2 id="pedTitle">Presets <small id="presetInfo"></small></h2><button class="iconbtn" id="pedClose" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
   <div class="pedcols" aria-hidden="true"><span></span><span>Icon</span><span>Name</span><span>Move time</span><span>Save</span></div>
   <div class="pedlist" id="pedList"></div>
-  <p class="note">Changes are kept at once. <b>Save</b> stores the camera's current view in that slot (tap twice to overwrite). The move time applies to straight moves; <i>Standard</i> uses Settings → Presets. The small save button next to each preset tile does the same with a double-click.</p>
+  <p class="note">Drag a row by its number (or a preset button over the video) to change the order; keys 1–9 follow it. Changes are kept at once. <b>Save</b> stores the camera's current view in that slot (tap twice to overwrite). The move time applies to straight moves; <i>Standard</i> uses Settings → Presets. The small save button next to each preset tile does the same with a double-click.</p>
 </dialog>
 
 <dialog class="confirm iconpick" id="iconDlg" aria-labelledby="iconTitle">
@@ -1514,7 +1524,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.repeat) return;
   if (k === 'h' || k === 'H'){ e.preventDefault(); if (S.ptzOk) goHome(); return; }
-  if (/^[1-9]$/.test(k)){ e.preventDefault(); goto(k); }
+  if (/^[1-9]$/.test(k)){ e.preventDefault(); goto(presetOrder()[+k - 1]); }
 });
 document.addEventListener('keyup', (e) => {
   const k = normKey(e.key);
@@ -1542,7 +1552,7 @@ function renderPTZ(){
 /* ---------- presets (stored in the camera) ---------- */
 async function loadPresets(){
   if (!S.ptzOk) return;
-  try { const r = await api('/api/ptz/presets'); S.presets = r.presets || []; S.presetNames = r.names || {}; S.durations = r.durations || {}; S.picons = r.icons || {}; if (r.active) S.active = r.active; }
+  try { const r = await api('/api/ptz/presets'); S.presets = r.presets || []; S.presetNames = r.names || {}; S.durations = r.durations || {}; S.picons = r.icons || {}; S.porder = r.order || []; if (r.active) S.active = r.active; }
   catch (e) { S.presets = []; log(`Presets not readable: ${e.message}`, 'warn'); }
   const st = S.status || {}, w = st.control && st.control.kind === 'web' ? st.control.web : null;
   const max = w ? w.presets_max : (st.onvif && st.onvif.ptz_node && st.onvif.ptz_node.presets_max);
@@ -1628,17 +1638,64 @@ async function pollActive(){
   }
   setTimeout(pollActive, 800);
 }
+/* display order of the nine camera slots (drag and drop); keys 1–9 follow the order on screen */
+function presetOrder(){
+  const o = (S.porder || []).filter(t => /^[1-9]$/.test(t));
+  for (let i = 1; i <= SLOTS; i++) if (!o.includes(String(i))) o.push(String(i));
+  return o.slice(0, SLOTS);
+}
+const posOf = (tok) => { const i = presetOrder().indexOf(tok); return i < 0 ? tok : String(i + 1); };
+async function saveOrder(order){
+  S.porder = order; renderPresets(); if (E.pedDlg.open) renderPresetEditor(true);
+  try { const r = await api('/api/ptz/order', {order}); S.porder = r.order; } catch (e) { log(e.message, 'err'); loadPresets(); }
+}
+/* drag a tile (or an editor row by its handle) onto another one to move it there */
+function sortable(container, itemSel, handleSel){
+  let from = null;
+  container.addEventListener('dragstart', (e) => {
+    const it = e.target.closest && e.target.closest(itemSel);
+    if (!it || !container.contains(it)) return;
+    from = it.dataset.tok; it.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', from); } catch {}
+  });
+  container.addEventListener('dragover', (e) => {
+    if (!from) return;
+    const it = e.target.closest && e.target.closest(itemSel);
+    container.querySelectorAll('.dropat').forEach(x => x !== it && x.classList.remove('dropat'));
+    if (it && it.dataset.tok !== from){ e.preventDefault(); e.dataTransfer.dropEffect = 'move'; it.classList.add('dropat'); }
+  });
+  container.addEventListener('dragleave', (e) => { const it = e.target.closest && e.target.closest(itemSel); if (it && !it.contains(e.relatedTarget)) it.classList.remove('dropat'); });
+  container.addEventListener('drop', (e) => {
+    const it = e.target.closest && e.target.closest(itemSel);
+    if (!from || !it) return;
+    e.preventDefault();
+    const order = presetOrder(), to = order.indexOf(it.dataset.tok);
+    order.splice(order.indexOf(from), 1); order.splice(to, 0, from);
+    from = null; saveOrder(order);
+  });
+  container.addEventListener('dragend', () => {
+    from = null;
+    container.querySelectorAll('.dragging,.dropat').forEach(x => x.classList.remove('dragging', 'dropat'));
+    if (handleSel) container.querySelectorAll(itemSel).forEach(x => x.draggable = false);
+  });
+  if (handleSel){   // rows with text fields: only the handle starts a drag
+    container.addEventListener('pointerdown', (e) => { const h = e.target.closest && e.target.closest(handleSel); if (h) h.closest(itemSel).draggable = true; });
+    container.addEventListener('pointerup', () => container.querySelectorAll(itemSel).forEach(x => x.draggable = false));
+  }
+}
 function renderPresets(){
   E.presets.textContent = '';
   const names = S.presetNames || {};
-  for (let i = 1; i <= SLOTS; i++){
-    const tok = String(i), p = presetFor(tok), name = names[tok] || (p && p.label) || (p && p.name) || '';
-    const wrap = document.createElement('div'); wrap.className = 'posw'; wrap.dataset.tok = tok;
+  const order = presetOrder();
+  for (let i = 0; i < SLOTS; i++){
+    const tok = order[i], pos = String(i + 1), p = presetFor(tok), name = names[tok] || (p && p.label) || (p && p.name) || '';
+    const wrap = document.createElement('div'); wrap.className = 'posw'; wrap.dataset.tok = tok; wrap.draggable = true;
     const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'pos' + (p ? '' : ' vacant'); btn.dataset.tok = tok;
-    const b = document.createElement('b'); b.textContent = tok;
+    const b = document.createElement('b'); b.textContent = pos;
     const n = document.createElement('span'); n.className = 'pn';
     const ico = p ? lucide((S.picons || {})[tok], 'pi') : '';
-    n.textContent = p ? (name || (ico ? '' : `Preset ${tok}`)) : (name ? `${name} (empty)` : 'empty');
+    n.textContent = p ? (name || (ico ? '' : `Preset ${pos}`)) : (name ? `${name} (empty)` : 'empty');
     btn.append(b);
     if (ico){ btn.classList.add('hasicon'); btn.insertAdjacentHTML('beforeend', ico); }
     if (n.textContent) btn.append(n);
@@ -1646,19 +1703,19 @@ function renderPresets(){
     if (dl){ const d = document.createElement('small'); d.className = 'pd'; d.textContent = dl; btn.append(d); }
     if (p && p.straight){ const g = document.createElement('i'); g.className = 'gd'; g.setAttribute('aria-hidden', 'true'); btn.append(g); }
     btn.disabled = !S.ptzOk || !p;
-    btn.title = p ? `Recall ${name || 'preset ' + tok} (key ${tok})${p.straight ? ' · straight move' : ' · the camera moves on its own, the target is learned meanwhile'}${dl ? ` · move time ${dl === 'fast' ? 'as fast as possible' : dl}` : ''}` : `Preset ${tok} is empty – save it with the pencil above`;
+    btn.title = p ? `Recall ${name || 'preset ' + pos} (key ${pos})${p.straight ? ' · straight move' : ' · the camera moves on its own, the target is learned meanwhile'}${dl ? ` · move time ${dl === 'fast' ? 'as fast as possible' : dl}` : ''}` : `Preset ${tok} is empty – save it with the pencil above`;
     btn.addEventListener('click', () => goto(tok));
     // quick save: double-click the small button next to the tile
     const set = document.createElement('button'); set.type = 'button'; set.className = 'pset'; set.innerHTML = icon('save');
-    set.title = `Double-click: save the current view as ${name || 'preset ' + tok}${p ? ' (overwrites)' : ''}`;
-    set.setAttribute('aria-label', `Save the current view as preset ${tok} (double-click)`);
+    set.title = `Double-click: save the current view as ${name || 'preset ' + pos}${p ? ' (overwrites)' : ''}`;
+    set.setAttribute('aria-label', `Save the current view as preset ${pos} (double-click)`);
     set.disabled = !S.ptzOk;
-    set.addEventListener('click', (e) => { if (e.detail > 1) return; clearTimeout(set._t); set._t = setTimeout(() => showLast(`Double-click to save preset ${tok}.`, 'warn'), 320); });
+    set.addEventListener('click', (e) => { if (e.detail > 1) return; clearTimeout(set._t); set._t = setTimeout(() => showLast(`Double-click to save preset ${pos}.`, 'warn'), 320); });
     set.addEventListener('dblclick', () => clearTimeout(set._t));
     set.addEventListener('dblclick', (e) => {
       e.preventDefault(); set._dbl = true; setTimeout(() => { set._dbl = false; }, 600);
       ptz('/api/ptz/setpreset', {token: tok, name: name || `Preset${tok}`}).then(() => {
-        log(`Preset ${tok}${name ? ` "${name}"` : ''} saved.`, 'ok');
+        log(`Preset ${pos}${name ? ` "${name}"` : ''} saved.`, 'ok');
         set.classList.add('saved'); setTimeout(() => { set.classList.remove('saved'); loadPresets(); }, 900);
       }).catch(() => {});
     });
@@ -1684,20 +1741,21 @@ function renderPresetEditor(force){
   }
   E.pedList.textContent = '';
   const names = S.presetNames || {};
-  for (let i = 1; i <= SLOTS; i++){
-    const tok = String(i), p = presetFor(tok), name = names[tok] || (p && p.label) || (p && p.name) || '';
+  const order = presetOrder();
+  for (let i = 0; i < SLOTS; i++){
+    const tok = order[i], pos = String(i + 1), p = presetFor(tok), name = names[tok] || (p && p.label) || (p && p.name) || '';
     const box = document.createElement('div'); box.className = 'pedrow'; box.dataset.tok = tok;
-    const b = document.createElement('b'); b.textContent = tok;
+    const b = document.createElement('b'); b.className = 'pgrip'; b.title = 'Drag to change the order'; b.innerHTML = (lucide('grip-vertical', 'gi') || '') + `<span>${pos}</span>`;
     const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'iconbtn'; sv.innerHTML = icon('save');
     sv.title = p ? 'Save the current view here (overwrites)' : 'Save the current view here'; sv.disabled = !S.ptzOk;
     let armed = null;
     sv.addEventListener('click', () => {
       if (p && !armed){ sv.classList.add('confirm'); sv.innerHTML = icon('check'); sv.title = 'Tap again to overwrite'; armed = setTimeout(() => { armed = null; sv.classList.remove('confirm'); sv.innerHTML = icon('save'); }, 2500); return; }
       clearTimeout(armed); armed = null;
-      ptz('/api/ptz/setpreset', {token: tok, name: inp.value || `Preset${tok}`}).then(() => { log(`Preset ${tok} saved.`, 'ok'); loadPresets(); }).catch(() => renderPresetEditor(true));
+      ptz('/api/ptz/setpreset', {token: tok, name: inp.value || `Preset${tok}`}).then(() => { log(`Preset ${pos} saved.`, 'ok'); loadPresets(); }).catch(() => renderPresetEditor(true));
     });
     const inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 40; inp.value = name; inp.placeholder = p ? 'Name' : 'empty';
-    inp.setAttribute('aria-label', `Name of preset ${tok}`);
+    inp.setAttribute('aria-label', `Name of preset ${pos}`);
     let t = null;
     const saveName = () => { clearTimeout(t); api('/api/ptz/name', {token: tok, name: inp.value}).then(r => { S.presetNames = r.names; }).catch(e => log(e.message, 'err')); };
     inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(saveName, 600); });
@@ -1705,7 +1763,7 @@ function renderPresetEditor(force){
     inp.addEventListener('change', saveName);
     const dur = document.createElement('select'); dur.className = 'pdur';
     dur.title = 'Move time for this preset (straight moves). "Standard" uses Settings → Presets.';
-    dur.setAttribute('aria-label', `Move time of preset ${tok}`);
+    dur.setAttribute('aria-label', `Move time of preset ${pos}`);
     DURATIONS.forEach(([v, l]) => dur.add(new Option(l, v)));
     const cur = (S.durations || {})[tok];
     dur.value = cur == null ? '' : String(cur);
@@ -1717,11 +1775,13 @@ function renderPresetEditor(force){
     ib.innerHTML = lucide(curIcon) || lucide('smile-plus') || '+';
     ib.classList.toggle('set', !!lucide(curIcon));
     ib.title = curIcon ? `Icon: ${curIcon} – click to change` : 'Choose an icon instead of (or with) a name';
-    ib.setAttribute('aria-label', `Icon of preset ${tok}`);
+    ib.setAttribute('aria-label', `Icon of preset ${pos}`);
     ib.addEventListener('click', () => openIconPicker(tok));
     box.append(b, ib, inp, dur, sv); E.pedList.append(box);
   }
 }
+sortable(E.presets, '.posw');
+sortable(E.pedList, '.pedrow', '.pgrip');
 function openPresetEditor(){ renderPresetEditor(true); E.pedDlg.showModal(); }
 E.pEdit.addEventListener('click', openPresetEditor);
 E.pedClose.addEventListener('click', () => E.pedDlg.close());
@@ -1730,8 +1790,8 @@ E.pedDlg.addEventListener('close', () => loadPresets());
 
 function goto(tok){
   if (!S.ptzOk) return;
-  if (/^[1-9]$/.test(tok) && !presetFor(tok)){ log(`Preset ${tok} is not saved yet.`, 'warn'); return; }
-  const label = (S.presetNames && S.presetNames[tok]) || `preset ${tok}`;
+  if (/^[1-9]$/.test(tok) && !presetFor(tok)){ log(`Preset ${posOf(tok)} is not saved yet.`, 'warn'); return; }
+  const label = (S.presetNames && S.presetNames[tok]) || `preset ${posOf(tok)}`;
   ptz('/api/ptz/goto', {token: tok}).then((r) => {
     r = r || {};
     log(r.route === 'straight' ? `Moving straight to "${label}" (${r.duration_s} s).` : `Recalling "${label}" (the camera moves on its own).`);

@@ -1110,6 +1110,7 @@ class FocusCtl:
 # The camera only allows letters and digits; display names (with spaces, accents) live here,
 # together with the VISCA coordinates used for straight moves.
 
+SLOTS = [str(i) for i in range(1, 10)]
 ICON_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 
@@ -1117,6 +1118,7 @@ class PresetNames:
     def __init__(self):
         self.path = os.path.join(DATA_DIR, "presets.json")
         self.names, self.targets, self.durations, self.icons = {}, {}, {}, {}
+        self.order = []
         self.lock = threading.Lock()
         try:
             with open(self.path, encoding="utf-8") as f:
@@ -1132,6 +1134,7 @@ class PresetNames:
                         if "zeit" in v:
                             v["time"] = v.pop("zeit")
                         self.targets[str(k)] = v
+                self.order = [str(t) for t in (raw.get("order") or []) if str(t) in SLOTS]
                 self.icons = {str(k): str(v) for k, v in (raw.get("icons") or {}).items() if ICON_NAME.match(str(v))}
                 for k, v in (raw.get("durations") or {}).items():
                     try:
@@ -1146,7 +1149,8 @@ class PresetNames:
     def _save(self):
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"names": self.names, "targets": self.targets, "durations": self.durations, "icons": self.icons},
+            json.dump({"names": self.names, "targets": self.targets, "durations": self.durations, "icons": self.icons,
+                       "order": self.order},
                       f, ensure_ascii=False, indent=1)
         os.replace(tmp, self.path)
 
@@ -1159,6 +1163,16 @@ class PresetNames:
                 self.names.pop(token, None)
             self._save()
         return self.names
+
+    def set_order(self, order):
+        """Display order of the nine slots on the page (the camera's presets stay where they are)."""
+        order = [str(t) for t in order]
+        if sorted(order) != sorted(SLOTS):
+            raise ValueError("the order must list the slots 1–9 once each")
+        with self.lock:
+            self.order = order
+            self._save()
+        return self.order
 
     def set_icon(self, token, icon):
         """Lucide icon name for this preset ("" = none)."""
@@ -1198,7 +1212,7 @@ class PresetNames:
             q["duration"] = self.durations.get(str(p.get("token")))
             q["icon"] = self.icons.get(str(p.get("token")))
             out.append(q)
-        return {"presets": out, "names": self.names, "durations": self.durations, "icons": self.icons,
+        return {"presets": out, "names": self.names, "durations": self.durations, "icons": self.icons, "order": self.order,
                 "active": App.moves.active}
 
 
@@ -2648,6 +2662,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/ptz/goto": lambda: App.moves.goto(data["token"]),
             "/api/ptz/setpreset": lambda: self._set_preset(data),
             "/api/ptz/name": lambda: {"names": App.names.set(data["token"], data.get("name", ""))},
+            "/api/ptz/order": lambda: {"order": App.names.set_order(list(data["order"]))},
             "/api/ptz/icon": lambda: {"icons": App.names.set_icon(data["token"], data.get("icon", ""))},
             "/api/ptz/duration": lambda: {"durations": App.names.set_duration(data["token"], data.get("duration"))},
             "/api/ptz/click": lambda: App.moves.click(data["dx"], data["dy"]),
