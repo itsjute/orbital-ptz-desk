@@ -132,12 +132,19 @@ class Glide:
         return self.get_config()
 
     # --- planning
-    def duration(self, dp, dt):
-        vp = self.speeds.speed("pan", self.cfg["max_level"])
-        vt = self.speeds.speed("tilt", self.cfg["max_level"])
-        # the peak speed of the S-curve is 1.875 × the mean speed
-        need = 1.875 * max(abs(dp) / vp, abs(dt) / vt)
-        return max(self.cfg["min_duration"], need)
+    FASTEST_LEVEL = 20   # per-preset "as fast as possible": leave the top levels for corrections
+
+    def need(self, dp, dt, level):
+        """Shortest duration at which the S-curve's peak stays within this speed level."""
+        vp, vt = self.speeds.speed("pan", level), self.speeds.speed("tilt", level)
+        return 1.875 * max(abs(dp) / vp, abs(dt) / vt)   # peak speed of the S-curve = 1.875 × mean
+
+    def duration(self, dp, dt, want=None):
+        """want: None = the general settings; 0 = as fast as possible; > 0 = this many seconds
+        (never faster than the camera can move)."""
+        if want is None:
+            return max(self.cfg["min_duration"], self.need(dp, dt, self.cfg["max_level"]))
+        return max(0.8, float(want), self.need(dp, dt, self.FASTEST_LEVEL))
 
     # --- execution
     def cancel(self, wait=1.0):
@@ -146,11 +153,11 @@ class Glide:
             self.abort.set()
             th.join(wait)
 
-    def start(self, link, start, target, on_done=None):
+    def start(self, link, start, target, on_done=None, duration=None):
         """start/target: (pan, tilt). Runs in the background; returns the plan."""
         self.cancel()
         dp, dt = target[0] - start[0], target[1] - start[1]
-        T = self.duration(dp, dt)
+        T = self.duration(dp, dt, duration)
         self.abort = threading.Event()
         self.state = {"active": True, "start": list(start), "target": list(target), "duration_s": round(T, 2), "t0": time.time()}
         self.thread = threading.Thread(target=self._run, args=(link, start, target, T, self.abort, on_done), daemon=True)

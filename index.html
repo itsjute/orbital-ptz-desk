@@ -426,6 +426,20 @@ body.midgrab, body.midgrab *{cursor:move!important}
 .stagecol .presets{grid-template-columns:repeat(9,minmax(0,1fr))}
 .stagecol .pos{padding:5px 8px}
 .stagecol .pos .pn{font-size:13px}
+
+/* active preset: on its way, there, or moved away from by hand */
+.posw.is-moving{border-color:var(--accent);animation:pmove .9s ease-in-out infinite alternate}
+@keyframes pmove{from{background:var(--panel-2)}to{background:var(--accent-soft)}}
+@media (prefers-reduced-motion:reduce){.posw.is-moving{animation:none;background:var(--accent-soft)}}
+.posw.is-at{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.posw.is-at .pos b,.posw.is-at .pos .pn{color:var(--fg);font-weight:600}
+.posw.is-left{border-color:var(--accent);border-style:dashed}
+.posw.is-left .pos .pn{color:var(--muted)}
+.pos .pd{flex:none;margin-left:auto;font:500 10.5px var(--f-mono);color:var(--muted)}
+.pos .pd + .gd{margin-left:5px}
+.presets.editing{grid-template-columns:minmax(0,1fr) !important}
+.posw .pos:focus-visible,.posw .pset:focus-visible{outline-offset:-2px}
+.posedit .pdur{width:auto;flex:none;padding:3px 4px;font-size:12px}
 </style>
 </head>
 <body>
@@ -736,7 +750,7 @@ body.midgrab, body.midgrab *{cursor:move!important}
             <span class="lbl">Other presets stored in the camera</span>
             <div class="extra" id="extra"></div>
           </div>
-          <p class="note">Presets are stored in the camera and also work with its remote and other software. Names and VISCA targets live in presets.json. To name or save a preset, use the pencil next to the presets.</p>
+          <p class="note">Presets are stored in the camera and also work with its remote and other software. Names and VISCA targets live in presets.json. To name or save a preset, use the pencil next to the presets; there you can also give each preset its own move time (otherwise the settings above apply).</p>
         </div>
       </section>
       </div>
@@ -1435,7 +1449,7 @@ function renderPTZ(){
 /* ---------- presets (stored in the camera) ---------- */
 async function loadPresets(){
   if (!S.ptzOk) return;
-  try { const r = await api('/api/ptz/presets'); S.presets = r.presets || []; S.presetNames = r.names || {}; }
+  try { const r = await api('/api/ptz/presets'); S.presets = r.presets || []; S.presetNames = r.names || {}; S.durations = r.durations || {}; if (r.active) S.active = r.active; }
   catch (e) { S.presets = []; log(`Presets not readable: ${e.message}`, 'warn'); }
   const st = S.status || {}, w = st.control && st.control.kind === 'web' ? st.control.web : null;
   const max = w ? w.presets_max : (st.onvif && st.onvif.ptz_node && st.onvif.ptz_node.presets_max);
@@ -1443,6 +1457,30 @@ async function loadPresets(){
   renderPresets(!(document.activeElement && document.activeElement.tagName === 'INPUT' && E.presets.contains(document.activeElement)));
 }
 function presetFor(token){ return S.presets.find(p => p.token === token); }
+const DURATIONS = [['', 'Standard'], ['0', 'Fastest'], ['2', '2 s'], ['3', '3 s'], ['4', '4 s'], ['6', '6 s'], ['8', '8 s'],
+                   ['10', '10 s'], ['15', '15 s'], ['20', '20 s'], ['30', '30 s'], ['45', '45 s'], ['60', '60 s']];
+const durLabel = (d) => d == null ? '' : (+d === 0 ? 'fast' : `${+d} s`);
+/* which preset the camera is at: on its way (moving), there (at), moved away by hand (left) */
+function applyActive(){
+  const a = S.active || {};
+  E.presets.querySelectorAll('.posw').forEach(w => {
+    const mine = a.token === w.dataset.tok;
+    w.classList.toggle('is-moving', mine && a.state === 'moving');
+    w.classList.toggle('is-at', mine && a.state === 'at');
+    w.classList.toggle('is-left', mine && a.state === 'left');
+    const btn = w.querySelector('.pos');
+    if (btn) btn.setAttribute('aria-current', mine && a.state === 'at' ? 'true' : 'false');
+  });
+}
+async function pollActive(){
+  if (S.ptzOk){
+    try {
+      const a = await api('/api/ptz/active');
+      if (!S.active || a.token !== S.active.token || a.state !== S.active.state){ S.active = a; applyActive(); }
+    } catch {}
+  }
+  setTimeout(pollActive, 800);
+}
 function renderPresets(force){
   // in edit mode, do not rebuild (the cursor would jump out of the name field)
   if (S.posEdit && !force && E.presets.querySelector('.posedit')){
@@ -1450,6 +1488,7 @@ function renderPresets(force){
     return;
   }
   E.presets.textContent = '';
+  E.presets.classList.toggle('editing', !!S.posEdit);
   const names = S.presetNames || {};
   for (let i = 1; i <= SLOTS; i++){
     const tok = String(i), p = presetFor(tok), name = names[tok] || (p && p.label) || (p && p.name) || '';
@@ -1471,16 +1510,27 @@ function renderPresets(force){
       inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(saveName, 600); });
       inp.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); saveName(); inp.blur(); } });
       inp.addEventListener('change', saveName);
-      box.append(b, inp, sv); E.presets.append(box);
+      const dur = document.createElement('select'); dur.className = 'pdur';
+      dur.title = 'Move time for this preset (straight moves). "Standard" uses Settings → Presets.';
+      dur.setAttribute('aria-label', `Move time of preset ${tok}`);
+      DURATIONS.forEach(([v, l]) => dur.add(new Option(l, v)));
+      const cur = (S.durations || {})[tok];
+      dur.value = cur == null ? '' : String(cur);
+      if (dur.value === '' && cur != null){ dur.add(new Option(`${cur} s`, String(cur))); dur.value = String(cur); }
+      dur.addEventListener('change', () => api('/api/ptz/duration', {token: tok, duration: dur.value === '' ? null : +dur.value})
+        .then(r => { S.durations = r.durations; loadPresets(); }).catch(e => log(e.message, 'err')));
+      box.append(b, inp, dur, sv); E.presets.append(box);
     } else {
-      const wrap = document.createElement('div'); wrap.className = 'posw';
+      const wrap = document.createElement('div'); wrap.className = 'posw'; wrap.dataset.tok = tok;
       const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'pos' + (p ? '' : ' vacant'); btn.dataset.tok = tok;
       const b = document.createElement('b'); b.textContent = tok;
       const n = document.createElement('span'); n.className = 'pn'; n.textContent = p ? (name || `Preset ${tok}`) : (name ? `${name} (empty)` : 'empty');
       btn.append(b, n);
+      const dl = p ? durLabel(p.duration) : '';
+      if (dl){ const d = document.createElement('small'); d.className = 'pd'; d.textContent = dl; btn.append(d); }
       if (p && p.straight){ const g = document.createElement('i'); g.className = 'gd'; g.setAttribute('aria-hidden', 'true'); btn.append(g); }
       btn.disabled = !S.ptzOk || !p;
-      btn.title = p ? `Recall ${name || 'preset ' + tok} (key ${tok})${p.straight ? ' · straight move' : ' · the camera moves on its own, the target is learned meanwhile'}` : `Preset ${tok} is empty – save it with the pencil above`;
+      btn.title = p ? `Recall ${name || 'preset ' + tok} (key ${tok})${p.straight ? ' · straight move' : ' · the camera moves on its own, the target is learned meanwhile'}${dl ? ` · move time ${dl === 'fast' ? 'as fast as possible' : dl}` : ''}` : `Preset ${tok} is empty – save it with the pencil above`;
       btn.addEventListener('click', () => goto(tok));
       // quick save: double-click the small button next to the tile
       const set = document.createElement('button'); set.type = 'button'; set.className = 'pset'; set.innerHTML = icon('save');
@@ -1500,6 +1550,7 @@ function renderPresets(force){
       E.presets.append(wrap);
     }
   }
+  applyActive();
   const extra = S.presets.filter(p => !/^[1-9]$/.test(p.token));
   E.extra.textContent = '';
   extra.forEach(p => {
@@ -1508,16 +1559,15 @@ function renderPresets(force){
   });
   E.extraWrap.hidden = !extra.length;
 }
-E.pEdit.addEventListener('click', () => { S.posEdit = !S.posEdit; E.pEdit.setAttribute('aria-pressed', String(S.posEdit)); renderPresets(true); });
+E.pEdit.addEventListener('click', () => { S.posEdit = !S.posEdit; E.pEdit.setAttribute('aria-pressed', String(S.posEdit)); renderPresets(true); fitControls(); });
 function goto(tok){
   if (!S.ptzOk) return;
   if (/^[1-9]$/.test(tok) && !presetFor(tok)){ log(`Preset ${tok} is not saved yet.`, 'warn'); return; }
   const label = (S.presetNames && S.presetNames[tok]) || `preset ${tok}`;
   ptz('/api/ptz/goto', {token: tok}).then((r) => {
     r = r || {};
-    const ms = r.route === 'straight' ? r.duration_s * 1000 : 1500;
     log(r.route === 'straight' ? `Moving straight to "${label}" (${r.duration_s} s).` : `Recalling "${label}" (the camera moves on its own).`);
-    const el = E.presets.querySelector(`[data-tok="${tok}"]`); if (el){ el.classList.add('flash'); clearTimeout(el._ft); el._ft = setTimeout(() => el.classList.remove('flash'), ms); }
+    S.active = {token: tok, state: 'moving'}; applyActive();
     if (r.route === 'camera') setTimeout(loadPresets, 5000);   // show the learned target
   }).catch(() => {});
 }
@@ -1918,7 +1968,7 @@ function placePresets(){
   // (e.g. 16:10 screens) – that leaves more room for the joystick in the column.
   const below = PPANEL.parentElement === STAGECOL;
   let want = false;
-  if (matchMedia('(min-width: 900px)').matches){
+  if (matchMedia('(min-width: 900px)').matches && !S.posEdit){
     const spare = innerHeight - E.stage.getBoundingClientRect().bottom - 16;
     want = spare >= (below ? PPANEL.offsetHeight : 56) + 12;
   }
@@ -2408,7 +2458,8 @@ if (location.protocol === 'file:'){
   })();
 }
 
-setInterval(() => { fetch('/api/ping', {cache: 'no-store'}).catch(() => {}); }, 4000);   // keeps the app alive in an Edge/Chrome app window
+setInterval(() => { fetch('/api/ping', {cache: 'no-store'}).catch(() => {}); }, 4000);
+pollActive();   // keeps the app alive in an Edge/Chrome app window
 window.addEventListener('pagehide', () => { if (anyInput() || (S.motion && S.motion.moving)) fetch('/api/joy/halt', {method: 'POST', keepalive: true, headers: {'Content-Type': 'application/json', 'X-Orbital': '1'}, body: '{}'}).catch(() => {}); });
 })();
 </script>

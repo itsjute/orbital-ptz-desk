@@ -1113,7 +1113,7 @@ class FocusCtl:
 class PresetNames:
     def __init__(self):
         self.path = os.path.join(DATA_DIR, "presets.json")
-        self.names, self.targets = {}, {}
+        self.names, self.targets, self.durations = {}, {}, {}
         self.lock = threading.Lock()
         try:
             with open(self.path, encoding="utf-8") as f:
@@ -1129,6 +1129,11 @@ class PresetNames:
                         if "zeit" in v:
                             v["time"] = v.pop("zeit")
                         self.targets[str(k)] = v
+                for k, v in (raw.get("durations") or {}).items():
+                    try:
+                        self.durations[str(k)] = max(0.0, min(120.0, float(v)))
+                    except (TypeError, ValueError):
+                        pass
             else:  # oldest format: names only
                 self.names = {str(k): str(v) for k, v in raw.items()}
         except (OSError, ValueError, AttributeError):
@@ -1137,7 +1142,8 @@ class PresetNames:
     def _save(self):
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"names": self.names, "targets": self.targets}, f, ensure_ascii=False, indent=1)
+            json.dump({"names": self.names, "targets": self.targets, "durations": self.durations},
+                      f, ensure_ascii=False, indent=1)
         os.replace(tmp, self.path)
 
     def set(self, token, name):
@@ -1150,6 +1156,17 @@ class PresetNames:
             self._save()
         return self.names
 
+    def set_duration(self, token, value):
+        """Move time for this preset in seconds; 0 = as fast as possible; None/"" = general settings."""
+        token = str(token)
+        with self.lock:
+            if value is None or value == "":
+                self.durations.pop(token, None)
+            else:
+                self.durations[token] = max(0.0, min(120.0, float(value)))
+            self._save()
+        return self.durations
+
     def set_target(self, token, target):
         with self.lock:
             self.targets[str(token)] = target
@@ -1161,8 +1178,9 @@ class PresetNames:
             q = dict(p)
             q["label"] = self.names.get(str(p.get("token")), "") or p.get("name") or ""
             q["straight"] = str(p.get("token")) in self.targets
+            q["duration"] = self.durations.get(str(p.get("token")))
             out.append(q)
-        return {"presets": out, "names": self.names}
+        return {"presets": out, "names": self.names, "durations": self.durations, "active": App.moves.active}
 
 
 # --------------------------------------------------------------------------- recalling presets
@@ -1177,6 +1195,16 @@ class PresetMoves:
         self.link = None
         self.zoom_direct_ok = None
         self.focus_direct_ok = None
+        # which preset the camera is at: state "moving" (on its way), "at", "left" (moved away by hand)
+        self.active = {"token": None, "state": None}
+
+    def _set_active(self, token, state):
+        self.active = {"token": str(token) if token is not None else None, "state": state}
+
+    def manual(self):
+        """Pan, tilt or zoom by hand (joystick, keys, wheel, double-click, home): away from the preset."""
+        if self.active["token"] and self.active["state"] != "left":
+            self._set_active(self.active["token"], "left")
 
     def visca(self):
         if self.link is None:
@@ -1189,6 +1217,8 @@ class PresetMoves:
     def cancel(self):
         """Any manual input: cancel the running move and any learning."""
         self.gen += 1
+        if self.active["state"] == "moving":       # interrupted on the way
+            self._set_active(self.active["token"], "left")
         if self.glide.state.get("active"):
             self.glide.cancel()
 
@@ -1204,8 +1234,9 @@ class PresetMoves:
         App.names.set_target(str(token), d)
         return d
 
-    def _learn(self, token, gen):
-        """After a camera-driven move, remember the target once the camera stands still."""
+    def _learn(self, token, gen, learn=True):
+        """After a camera-driven move, wait until the camera stands still; then the preset counts as
+        reached and (learn=True) its VISCA target is remembered for straight moves."""
         def run():
             try:
                 link = self.visca()
@@ -1225,12 +1256,18 @@ class PresetMoves:
                     if stable >= 3:
                         if gen != self.gen:
                             return
+                        self._set_active(token, "at")
+                        if not learn:
+                            return
                         d = self.snapshot(token)
                         log(f"Preset {token} learned (VISCA {d['pan']}/{d['tilt']}) – straight moves from now on.")
                         return
                     time.sleep(0.25)
             except Exception as e:  # noqa
-                log(f"Preset {token} could not be learned: {e}")
+                if gen == self.gen:
+                    self._set_active(token, "at")
+                if learn:
+                    log(f"Preset {token} could not be learned: {e}")
         threading.Thread(target=run, daemon=True).start()
 
     def goto(self, token):
@@ -1239,6 +1276,7 @@ class PresetMoves:
             raise OnvifError("A calibration is running")
         self.cancel()
         gen = self.gen
+        self._set_active(token, "moving")
         App.motion.engine.halt()
         time.sleep(0.15)
         z = App.names.targets.get(token)
@@ -1251,11 +1289,11 @@ class PresetMoves:
             else:
                 zoom_sent = self._zoom_to(link, z)
                 plan = self.glide.start(link, (p, t), (int(z["pan"]), int(z["tilt"])),
-                                        on_done=lambda ok: self._after(token, z, zoom_sent, gen))
+                                        on_done=lambda ok: self._after(token, z, zoom_sent, gen),
+                                        duration=App.names.durations.get(token))
                 return dict(plan, route="straight", token=token)
         App.ptz.goto(token)
-        if self.glide.cfg["mode"] == "straight":
-            self._learn(token, gen)
+        self._learn(token, gen, learn=self.glide.cfg["mode"] == "straight")
         return {"route": "camera", "token": token}
 
     def _zoom_to(self, link, z):
@@ -1280,6 +1318,7 @@ class PresetMoves:
     def _after(self, token, z, zoom_sent, gen):
         if gen != self.gen:
             return
+        self._set_active(token, "at")
         link = self.visca()
         if zoom_sent is False and z.get("zoom") is not None:
             # pan/tilt are already there; the camera only adjusts zoom and focus.
@@ -1317,6 +1356,7 @@ class PresetMoves:
         if self.busy():
             raise OnvifError("A calibration is running")
         self.cancel()
+        self.manual()
         App.motion.engine.halt()
         link = self.visca()
         try:
@@ -1342,6 +1382,7 @@ class PresetMoves:
         if App.cal.running or App.vcheck.running:
             raise OnvifError("Wait for the running calibration to finish first")
         self.cancel()
+        self.manual()
         eng = App.motion.engine
 
         def before():
@@ -1354,6 +1395,7 @@ class PresetMoves:
 
     def status(self):
         return {"settings": self.glide.get_config(), "move": self.glide.state, "calibration": self.glide.cal,
+                "active": self.active,
                 "speeds": {ax: [round(v) for v in row] for ax, row in self.glide.speeds.full.items()}}
 
 
@@ -2504,6 +2546,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._status()
         if path == "/api/ping":
             return self._send(200, {"ok": True})
+        if path == "/api/ptz/active":
+            return self._send(200, App.moves.active)
         if path == "/api/log":
             try:
                 since = int(parse_qs(urlparse(self.path).query).get("since", ["0"])[0])
@@ -2559,9 +2603,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": "Invalid data"})
         cam, dog = App.ptz, App.dog
         # any manual input cancels a running straight move
-        if path in ("/api/ptz/move", "/api/ptz/stop", "/api/ptz/home", "/api/ptz/zoomstep", "/api/joy/halt") or (
-                path == "/api/joy" and any(float(data.get(k, 0) or 0) for k in ("x", "y", "z"))):
+        moving_input = (path in ("/api/ptz/home", "/api/ptz/zoomstep", "/api/calibration/start", "/api/visca/start")
+                        or (path in ("/api/joy", "/api/ptz/move") and any(float(data.get(k, 0) or 0) for k in ("x", "y", "z"))))
+        if moving_input or path in ("/api/ptz/stop", "/api/joy/halt"):
             App.moves.cancel()
+        if moving_input:
+            App.moves.manual()
         routes = {
             "/api/connect": self._reconnect,
             "/api/config": lambda: save_config(data),
@@ -2576,6 +2623,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/ptz/goto": lambda: App.moves.goto(data["token"]),
             "/api/ptz/setpreset": lambda: self._set_preset(data),
             "/api/ptz/name": lambda: {"names": App.names.set(data["token"], data.get("name", ""))},
+            "/api/ptz/duration": lambda: {"durations": App.names.set_duration(data["token"], data.get("duration"))},
             "/api/ptz/click": lambda: App.moves.click(data["dx"], data["dy"]),
             "/api/ptz/click/learn": lambda: App.moves.click_learn(data),
             "/api/ai": lambda: {"ai": App.web.set_ai(str(data["cmd"]), str(data["value"]))},
@@ -2628,6 +2676,7 @@ class Handler(BaseHTTPRequestHandler):
         name = str(data.get("name") or App.names.names.get(tok) or f"Preset{tok}")
         App.moves.cancel()
         res = {"token": App.ptz.set_preset(tok, name)}
+        App.moves._set_active(tok, "at")
         try:
             res["visca"] = App.moves.snapshot(tok)
         except Exception as e:  # noqa
