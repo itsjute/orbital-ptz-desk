@@ -521,7 +521,10 @@ body.midgrab, body.midgrab *{cursor:move!important}
 .pgrip{display:flex;align-items:center;justify-content:flex-end;gap:1px;cursor:grab;user-select:none}
 .pgrip .gi{width:15px;height:15px;color:var(--muted);opacity:.7}
 .pgrip:hover .gi{opacity:1;color:var(--fg)}
-.pedcols,.pedrow{grid-template-columns:36px 34px minmax(0,1fr) 112px 34px}
+.pedcols,.pedrow{grid-template-columns:36px 34px minmax(0,1fr) 112px 34px 34px}
+.pedrow .iconbtn:disabled{opacity:.35;cursor:not-allowed}
+.pedrow .pdel.confirm{background:var(--tally);border-color:var(--tally);color:#fff}
+.pedrow .pdel:not(:disabled):hover{color:var(--tally);border-color:var(--tally)}
 </style>
 </head>
 <body>
@@ -940,9 +943,9 @@ body.midgrab, body.midgrab *{cursor:move!important}
 
 <dialog class="confirm preseted" id="pedDlg" aria-labelledby="pedTitle">
   <div class="ped-head"><h2 id="pedTitle">Presets <small id="presetInfo"></small></h2><button class="iconbtn" id="pedClose" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
-  <div class="pedcols" aria-hidden="true"><span></span><span>Icon</span><span>Name</span><span>Move time</span><span>Save</span></div>
+  <div class="pedcols" aria-hidden="true"><span></span><span>Icon</span><span>Name</span><span>Move time</span><span>Save</span><span>Clear</span></div>
   <div class="pedlist" id="pedList"></div>
-  <p class="note">Drag a row by its number (or a preset button over the video) to change the order; keys 1–9 follow it. Changes are kept at once. <b>Save</b> stores the camera's current view in that slot (tap twice to overwrite). The move time applies to straight moves; <i>Standard</i> uses Settings → Presets. The small save button next to each preset tile does the same with a double-click.</p>
+  <p class="note">Drag a row by its number (or a preset button over the video) to change the order; keys 1–9 follow it. Changes are kept at once. <b>Save</b> stores the camera's current view in that slot (tap twice to overwrite), <b>Clear</b> empties it (tap twice). The move time applies to straight moves; <i>Standard</i> uses Settings → Presets. The small save button in the corner of each preset button over the video saves with a double-click.</p>
 </dialog>
 
 <dialog class="confirm iconpick" id="iconDlg" aria-labelledby="iconTitle">
@@ -1736,7 +1739,7 @@ function renderPresets(){
 function renderPresetEditor(force){
   // do not rebuild while a name is being typed (the cursor would jump out of the field)
   if (!force && E.pedList.contains(document.activeElement) && document.activeElement.tagName === 'INPUT'){
-    E.pedList.querySelectorAll('.pedrow > .iconbtn:last-child').forEach(b => b.disabled = !S.ptzOk);
+    E.pedList.querySelectorAll('.pedrow .psave').forEach(b => b.disabled = !S.ptzOk);
     return;
   }
   E.pedList.textContent = '';
@@ -1746,7 +1749,7 @@ function renderPresetEditor(force){
     const tok = order[i], pos = String(i + 1), p = presetFor(tok), name = names[tok] || (p && p.label) || (p && p.name) || '';
     const box = document.createElement('div'); box.className = 'pedrow'; box.dataset.tok = tok;
     const b = document.createElement('b'); b.className = 'pgrip'; b.title = 'Drag to change the order'; b.innerHTML = (lucide('grip-vertical', 'gi') || '') + `<span>${pos}</span>`;
-    const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'iconbtn'; sv.innerHTML = icon('save');
+    const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'iconbtn psave'; sv.innerHTML = icon('save');
     sv.title = p ? 'Save the current view here (overwrites)' : 'Save the current view here'; sv.disabled = !S.ptzOk;
     let armed = null;
     sv.addEventListener('click', () => {
@@ -1777,7 +1780,18 @@ function renderPresetEditor(force){
     ib.title = curIcon ? `Icon: ${curIcon} – click to change` : 'Choose an icon instead of (or with) a name';
     ib.setAttribute('aria-label', `Icon of preset ${pos}`);
     ib.addEventListener('click', () => openIconPicker(tok));
-    box.append(b, ib, inp, dur, sv); E.pedList.append(box);
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'iconbtn pdel';
+    const filled = !!(p || name || (S.picons || {})[tok] || (S.durations || {})[tok] != null);
+    del.innerHTML = lucide('trash-2') || '×'; del.disabled = !filled;
+    del.title = 'Clear this preset (name, icon, move time and position)'; del.setAttribute('aria-label', `Clear preset ${pos}`);
+    let delArm = null;
+    del.addEventListener('click', () => {
+      if (!delArm){ del.classList.add('confirm'); del.title = 'Tap again to clear'; delArm = setTimeout(() => { delArm = null; del.classList.remove('confirm'); del.title = 'Clear this preset'; }, 2500); return; }
+      clearTimeout(delArm); delArm = null;
+      api('/api/ptz/clear', {token: tok}).then(r => { log(`Preset ${pos} cleared – ${r.camera}.`, 'ok'); loadPresets().then(() => renderPresetEditor(true)); })
+        .catch(e => log(e.message, 'err'));
+    });
+    box.append(b, ib, inp, dur, sv, del); E.pedList.append(box);
   }
 }
 sortable(E.presets, '.posw');

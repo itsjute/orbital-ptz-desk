@@ -710,6 +710,9 @@ class Onvif:
     def goto(self, token):
         self._ptz("GotoPreset", f"<tptz:PresetToken>{escape(str(token))}</tptz:PresetToken>")
 
+    def remove_preset(self, token):
+        self._ptz("RemovePreset", f"<tptz:PresetToken>{escape(str(token))}</tptz:PresetToken>")
+
     def set_preset(self, token, name):
         inner = f"<tptz:PresetName>{escape(name)}</tptz:PresetName>"
         if token:
@@ -1119,6 +1122,7 @@ class PresetNames:
         self.path = os.path.join(DATA_DIR, "presets.json")
         self.names, self.targets, self.durations, self.icons = {}, {}, {}, {}
         self.order = []
+        self.cleared = set()      # slots emptied in Orbital whose preset the camera may still hold
         self.lock = threading.Lock()
         try:
             with open(self.path, encoding="utf-8") as f:
@@ -1135,6 +1139,7 @@ class PresetNames:
                             v["time"] = v.pop("zeit")
                         self.targets[str(k)] = v
                 self.order = [str(t) for t in (raw.get("order") or []) if str(t) in SLOTS]
+                self.cleared = {str(t) for t in (raw.get("cleared") or [])}
                 self.icons = {str(k): str(v) for k, v in (raw.get("icons") or {}).items() if ICON_NAME.match(str(v))}
                 for k, v in (raw.get("durations") or {}).items():
                     try:
@@ -1150,7 +1155,7 @@ class PresetNames:
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump({"names": self.names, "targets": self.targets, "durations": self.durations, "icons": self.icons,
-                       "order": self.order},
+                       "order": self.order, "cleared": sorted(self.cleared)},
                       f, ensure_ascii=False, indent=1)
         os.replace(tmp, self.path)
 
@@ -1163,6 +1168,22 @@ class PresetNames:
                 self.names.pop(token, None)
             self._save()
         return self.names
+
+    def clear(self, token):
+        """Empty a slot: name, icon, move time and target go; the slot shows as empty."""
+        token = str(token)
+        with self.lock:
+            for d in (self.names, self.icons, self.durations, self.targets):
+                d.pop(token, None)
+            self.cleared.add(token)
+            self._save()
+
+    def uncleared(self, token):
+        token = str(token)
+        if token in self.cleared:
+            with self.lock:
+                self.cleared.discard(token)
+                self._save()
 
     def set_order(self, order):
         """Display order of the nine slots on the page (the camera's presets stay where they are)."""
@@ -1206,6 +1227,8 @@ class PresetNames:
     def merge(self, presets):
         out = []
         for p in presets:
+            if str(p.get("token")) in self.cleared:
+                continue
             q = dict(p)
             q["label"] = self.names.get(str(p.get("token")), "") or p.get("name") or ""
             q["straight"] = str(p.get("token")) in self.targets
@@ -2662,6 +2685,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/ptz/goto": lambda: App.moves.goto(data["token"]),
             "/api/ptz/setpreset": lambda: self._set_preset(data),
             "/api/ptz/name": lambda: {"names": App.names.set(data["token"], data.get("name", ""))},
+            "/api/ptz/clear": lambda: self._clear_preset(data),
             "/api/ptz/order": lambda: {"order": App.names.set_order(list(data["order"]))},
             "/api/ptz/icon": lambda: {"icons": App.names.set_icon(data["token"], data.get("icon", ""))},
             "/api/ptz/duration": lambda: {"durations": App.names.set_duration(data["token"], data.get("duration"))},
@@ -2712,11 +2736,31 @@ class Handler(BaseHTTPRequestHandler):
                 raise
         return self._status_dict()
 
+    def _clear_preset(self, data):
+        tok = str(data["token"])
+        if tok not in SLOTS:
+            raise ValueError("only presets 1–9 can be cleared here")
+        App.moves.cancel()
+        App.names.clear(tok)
+        if App.moves.active["token"] == tok:
+            App.moves._set_active(None, None)
+        camera = "kept in the camera (hidden in Orbital)"
+        # remove it in the camera too – over ONVIF, and only if a preset with exactly this token exists
+        try:
+            if App.cam.connected and any(str(p["token"]) == tok for p in App.cam.presets()):
+                App.cam.remove_preset(tok)
+                camera = "removed in the camera too"
+        except Exception as e:  # noqa
+            camera = f"kept in the camera ({e})"
+        log(f"Preset {tok} cleared – {camera}.")
+        return {"ok": True, "camera": camera}
+
     def _set_preset(self, data):
         tok = str(data.get("token"))
         name = str(data.get("name") or App.names.names.get(tok) or f"Preset{tok}")
         App.moves.cancel()
         res = {"token": App.ptz.set_preset(tok, name)}
+        App.names.uncleared(tok)
         App.moves._set_active(tok, "at")
         try:
             res["visca"] = App.moves.snapshot(tok)

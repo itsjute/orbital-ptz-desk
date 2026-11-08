@@ -48,7 +48,7 @@ exactly as tall as the video – the joystick grows and shrinks with the availab
   their own move time (2–60 s, or as fast as possible). The tile shows where the camera is: it pulses
   on the way, is highlighted at the preset and gets a dashed outline once you move away by hand.
   Double-click the small save button in a preset's corner to store the current view there on the fly;
-  the pencil opens the preset editor. Drag a preset onto another place to change the order – the
+  the pencil opens the preset editor (name, icon, move time, save, clear). Drag a preset onto another place to change the order – the
   keys 1–9 follow the order on screen. Recalled presets move on a **straight, smooth line** – the
   server drives the move over VISCA and corrects it ten times a second, because the camera's own
   preset recall finishes tilt early and draws a bent path. Zoom and locked focus are restored too.
