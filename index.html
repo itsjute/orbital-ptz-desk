@@ -665,6 +665,7 @@ body.midgrab, body.midgrab *{cursor:move!important}
             <label><input type="checkbox" id="invPan"> Invert pan</label>
             <label><input type="checkbox" id="invTilt"> Invert tilt</label>
           </div>
+          <p class="note">With the image turned by 180° (button <i>180°</i>), pan and tilt follow the turned image automatically – these switches come on top.</p>
           <h3>Shortcuts</h3>
           <dl class="keys">
             <dt><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></dt><dd>pan and tilt (combinable), release stops smoothly</dd>
@@ -1133,7 +1134,7 @@ function startStats(){
 /* ---------- smooth motion: joystick, rockers, keys, wheel -> motion engine in the server ---------- */
 function vel(dx, dy, dz){
   const s = SPEED[E.speed.value - 1][0], zs = SPEED[E.zspeed.value - 1][0];
-  return {x: dx * s * (E.invPan.checked ? -1 : 1), y: dy * s * (E.invTilt.checked ? -1 : 1), z: dz * zs};
+  return {x: dx * s * panSign(), y: dy * s * tiltSign(), z: dz * zs};
 }
 const IN = {joy: {x: 0, y: 0}, zoom: 0, keys: {x: 0, y: 0, z: 0}, wheel: {x: 0, y: 0, z: 0}, mid: {x: 0, y: 0}};
 const DEAD = 0.06;
@@ -1255,7 +1256,7 @@ dragControl(E.joy, E.joyKnob, (dx, dy, r) => {
   if (len > R){ dx *= R / len; dy *= R / len; }
   E.joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
   const [nx, ny] = stick(dx, dy, R, DEAD);
-  IN.joy.x = nx * (E.invPan.checked ? -1 : 1); IN.joy.y = ny * (E.invTilt.checked ? -1 : 1);
+  IN.joy.x = nx * panSign(); IN.joy.y = ny * tiltSign();
   joyPush();
 }, () => { IN.joy.x = IN.joy.y = 0; joyPush(); });
 dragControl(E.zrock, E.zKnob, (dx, dy, r) => {
@@ -1620,6 +1621,10 @@ E.rec.addEventListener('click', async () => {
 E.recDir.addEventListener('click', () => api('/api/recording/folder', {}).catch(e => log(e.message, 'err')));
 function applyOvl(){ const [m, l] = OVL[S.ovl]; E.overlay.dataset.mode = m; E.ovl.title = `Guides: ${l}`; E.ovl.setAttribute('aria-pressed', String(m !== 'none')); E.ovl.querySelector('span').textContent = m === 'none' ? 'Guides' : l; }
 E.ovl.addEventListener('click', () => { S.ovl = (S.ovl + 1) % OVL.length; applyOvl(); store.set('view-ovl', S.ovl); });
+/* With the image turned by 180° (camera mounted upside down) every direction is mirrored on screen,
+   so pan and tilt are mirrored too: right on the joystick still moves the picture to the right. */
+function panSign(){ return (E.invPan.checked !== !!S.rot) ? -1 : 1; }
+function tiltSign(){ return (E.invTilt.checked !== !!S.rot) ? -1 : 1; }
 function applyRot(){ E.stage.classList.toggle('rot', S.rot); E.rot.setAttribute('aria-pressed', String(S.rot)); }
 E.rot.addEventListener('click', () => { S.rot = !S.rot; applyRot(); store.set('view-rot', S.rot); });
 E.fs.addEventListener('click', () => {
@@ -2273,8 +2278,8 @@ document.addEventListener('wheel', (e) => {
     joyPush();
     return;
   }
-  IN.wheel.x = lim(IN.wheel.x + nx * mode.gain * (E.invPan.checked ? -1 : 1));
-  IN.wheel.y = lim(IN.wheel.y - ny * mode.gain * (E.invTilt.checked ? -1 : 1));
+  IN.wheel.x = lim(IN.wheel.x + nx * mode.gain * panSign());
+  IN.wheel.y = lim(IN.wheel.y - ny * mode.gain * tiltSign());
   aimRun++;   // cancel a running click correction
   if (!wheelTimer){ wheelLast = performance.now(); wheelTimer = setInterval(wheelTick, 60); }
   joyPush();
@@ -2335,7 +2340,7 @@ document.addEventListener('pointermove', (e) => {
   if (len > MID_R){ dx *= MID_R / len; dy *= MID_R / len; }
   midEl.querySelector('i').style.transform = `translate(${dx}px, ${dy}px)`;
   const [nx, ny] = stick(dx, dy, MID_R, DEAD * 1.5);
-  IN.mid.x = nx * (E.invPan.checked ? -1 : 1); IN.mid.y = ny * (E.invTilt.checked ? -1 : 1);
+  IN.mid.x = nx * panSign(); IN.mid.y = ny * tiltSign();
   midCell(dx, dy);
   joyPush();
 }, true);
