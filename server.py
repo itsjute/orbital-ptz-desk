@@ -1110,10 +1110,13 @@ class FocusCtl:
 # The camera only allows letters and digits; display names (with spaces, accents) live here,
 # together with the VISCA coordinates used for straight moves.
 
+ICON_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
 class PresetNames:
     def __init__(self):
         self.path = os.path.join(DATA_DIR, "presets.json")
-        self.names, self.targets, self.durations = {}, {}, {}
+        self.names, self.targets, self.durations, self.icons = {}, {}, {}, {}
         self.lock = threading.Lock()
         try:
             with open(self.path, encoding="utf-8") as f:
@@ -1129,6 +1132,7 @@ class PresetNames:
                         if "zeit" in v:
                             v["time"] = v.pop("zeit")
                         self.targets[str(k)] = v
+                self.icons = {str(k): str(v) for k, v in (raw.get("icons") or {}).items() if ICON_NAME.match(str(v))}
                 for k, v in (raw.get("durations") or {}).items():
                     try:
                         self.durations[str(k)] = max(0.0, min(120.0, float(v)))
@@ -1142,7 +1146,7 @@ class PresetNames:
     def _save(self):
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"names": self.names, "targets": self.targets, "durations": self.durations},
+            json.dump({"names": self.names, "targets": self.targets, "durations": self.durations, "icons": self.icons},
                       f, ensure_ascii=False, indent=1)
         os.replace(tmp, self.path)
 
@@ -1155,6 +1159,19 @@ class PresetNames:
                 self.names.pop(token, None)
             self._save()
         return self.names
+
+    def set_icon(self, token, icon):
+        """Lucide icon name for this preset ("" = none)."""
+        token, icon = str(token), str(icon or "").strip()
+        if icon and not ICON_NAME.match(icon):
+            raise ValueError("not an icon name")
+        with self.lock:
+            if icon:
+                self.icons[token] = icon
+            else:
+                self.icons.pop(token, None)
+            self._save()
+        return self.icons
 
     def set_duration(self, token, value):
         """Move time for this preset in seconds; 0 = as fast as possible; None/"" = general settings."""
@@ -1179,8 +1196,10 @@ class PresetNames:
             q["label"] = self.names.get(str(p.get("token")), "") or p.get("name") or ""
             q["straight"] = str(p.get("token")) in self.targets
             q["duration"] = self.durations.get(str(p.get("token")))
+            q["icon"] = self.icons.get(str(p.get("token")))
             out.append(q)
-        return {"presets": out, "names": self.names, "durations": self.durations, "active": App.moves.active}
+        return {"presets": out, "names": self.names, "durations": self.durations, "icons": self.icons,
+                "active": App.moves.active}
 
 
 # --------------------------------------------------------------------------- recalling presets
@@ -2542,6 +2561,12 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 self._send(404, {"error": "index.html is missing in the folder"})
             return
+        if path == "/lucide-icons.json":      # icon set for the presets (Lucide, ISC licence)
+            try:
+                with open(os.path.join(RES_DIR, "lucide-icons.json"), "rb") as f:
+                    return self._send(200, f.read())
+            except OSError:
+                return self._send(404, {"error": "lucide-icons.json is missing"})
         if path == "/api/status":
             return self._status()
         if path == "/api/ping":
@@ -2623,6 +2648,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/ptz/goto": lambda: App.moves.goto(data["token"]),
             "/api/ptz/setpreset": lambda: self._set_preset(data),
             "/api/ptz/name": lambda: {"names": App.names.set(data["token"], data.get("name", ""))},
+            "/api/ptz/icon": lambda: {"icons": App.names.set_icon(data["token"], data.get("icon", ""))},
             "/api/ptz/duration": lambda: {"durations": App.names.set_duration(data["token"], data.get("duration"))},
             "/api/ptz/click": lambda: App.moves.click(data["dx"], data["dy"]),
             "/api/ptz/click/learn": lambda: App.moves.click_learn(data),

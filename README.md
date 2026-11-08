@@ -44,9 +44,12 @@ exactly as tall as the video – the joystick grows and shrinks with the availab
   remainder once and learns the image scale per zoom position.
 - **Keyboard:** arrow keys (combinable), <kbd>+</kbd>/<kbd>−</kbd> zoom, <kbd>N</kbd>/<kbd>F</kbd>
   focus, <kbd>L</kbd> loupe, <kbd>H</kbd> home, <kbd>1</kbd>–<kbd>9</kbd> presets.
-- **Presets 1–9 with names.** Double-click the small save button next to a preset to store the
-  current view there on the fly; the pencil switches to editing names. Recalled presets move on a **straight, smooth line** – the server
-  drives the move over VISCA and corrects it ten times a second, because the camera's own
+- **Presets 1–9** with a name and/or an icon (any of the ~1,500 [Lucide](https://lucide.dev) icons) and
+  their own move time (2–60 s, or as fast as possible). The tile shows where the camera is: it pulses
+  on the way, is highlighted at the preset and gets a dashed outline once you move away by hand.
+  Double-click the small save button next to a preset to store the current view there on the fly;
+  the pencil opens the preset editor. Recalled presets move on a **straight, smooth line** – the
+  server drives the move over VISCA and corrects it ten times a second, because the camera's own
   preset recall finishes tilt early and draws a bent path. Zoom and locked focus are restored too.
 - **Focus:** autofocus, lock, one-push focus (autofocus briefly, then lock), a focus rocker with
   variable speed, a 3× **loupe** for the image centre and a **sharpness meter** with peak hold.
@@ -157,7 +160,7 @@ folder of `server.py` when run from source (override with the environment variab
 | File | Content |
 |---|---|
 | `curves.json` | motion curves and measured image speeds per level |
-| `presets.json` | preset names and their VISCA targets (pan, tilt, zoom, focus) |
+| `presets.json` | preset names, icons, move times and their VISCA targets (pan, tilt, zoom, focus) |
 | `glide.json` | settings for straight preset moves |
 | `visca_speeds.json` | calibrated speed per VISCA level and axis |
 | `click_scale.json` | learned image scale per zoom position for double-click aiming |

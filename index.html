@@ -266,10 +266,6 @@ textarea{width:100%;min-height:180px;margin-top:8px;padding:8px;border:1px solid
 .pos:hover:not(:disabled){border-color:var(--accent)}
 .pos:disabled{cursor:not-allowed;opacity:.55}
 .pos.flash{border-color:var(--accent);background:var(--accent-soft)}
-.posedit{display:flex;align-items:center;gap:5px;border:1px dashed var(--accent);border-radius:6px;padding:4px 5px;background:var(--panel)}
-.posedit > b{font:600 13px var(--f-display);color:var(--muted)}
-.posedit input{width:100%;min-width:0;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);font-size:13px}
-.posedit .iconbtn.confirm{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 /* Messages as a toast on the image */
 .toast{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);max-width:88%;background:var(--stage-chip);color:var(--stage-fg);font:500 13px var(--f-body);padding:6px 12px;border-radius:5px;z-index:3;border-left:3px solid var(--warn)}
 .toast.err{border-left-color:var(--tally)}
@@ -437,9 +433,42 @@ body.midgrab, body.midgrab *{cursor:move!important}
 .posw.is-left .pos .pn{color:var(--muted)}
 .pos .pd{flex:none;margin-left:auto;font:500 10.5px var(--f-mono);color:var(--muted)}
 .pos .pd + .gd{margin-left:5px}
-.presets.editing{grid-template-columns:minmax(0,1fr) !important}
 .posw .pos:focus-visible,.posw .pset:focus-visible{outline-offset:-2px}
-.posedit .pdur{width:auto;flex:none;padding:3px 4px;font-size:12px}
+
+/* presets with an icon: icon large, name small underneath */
+.pos{align-items:center}
+.pos .pd{align-self:center}
+.pos.hasicon{flex-direction:column;align-items:center;justify-content:center;gap:1px;padding-top:4px;padding-bottom:3px;text-align:center}
+.pos.hasicon .pi{width:20px;height:20px;flex:none}
+.pos.hasicon .pn{font-size:10.5px !important;line-height:1.15;max-width:100%;color:var(--muted)}
+.pos.hasicon b{position:absolute;top:2px;left:6px;font-size:10px}
+.pos.hasicon .gd{position:absolute;top:5px;right:6px;margin:0}
+.pos.hasicon .pd{position:absolute;bottom:2px;right:5px;font-size:9.5px}
+.posw.is-at .pos.hasicon .pi{color:var(--accent)}
+.iconpick{width:min(560px,92vw)}
+.iconpick input[type="search"]{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2);margin-top:4px}
+.iconpick .note{margin-top:6px}
+.icongrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px;max-height:min(50vh,420px);overflow:auto;margin-top:8px;padding:2px}
+.icongrid button{aspect-ratio:1;display:grid;place-items:center;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--fg);cursor:pointer;padding:0}
+.icongrid button:hover{border-color:var(--accent);color:var(--accent)}
+.icongrid button[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.icongrid .ic{width:22px;height:22px}
+.iconpick .btns{justify-content:space-between}
+
+/* preset editor dialog */
+.preseted{width:min(620px,94vw)}
+.ped-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ped-head h2{margin:0}
+.pedcols,.pedrow{display:grid;grid-template-columns:22px 34px minmax(0,1fr) 112px 34px;gap:8px;align-items:center}
+.pedcols{font:500 11.5px var(--f-display);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);padding:0 2px 4px}
+.pedlist{display:flex;flex-direction:column;gap:6px;max-height:min(62vh,520px);overflow:auto;padding:2px}
+.pedrow > b{font:600 14px var(--f-display);color:var(--muted);text-align:right}
+.pedrow input{width:100%;min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--panel-2)}
+.pedrow select{width:100%;padding:5px 6px}
+.pedrow .iconbtn{width:34px;height:32px}
+.pedrow .picon.set{color:var(--accent);border-color:var(--accent)}
+.pedrow .iconbtn.confirm{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.preseted > .note{margin-top:10px}
 </style>
 </head>
 <body>
@@ -547,7 +576,7 @@ body.midgrab, body.midgrab *{cursor:move!important}
     </section>
 
     <section class="panel ppanel" id="presetPanel">
-      <h2>Presets <small id="presetInfo"></small><button class="iconbtn" id="pEdit" type="button" aria-pressed="false" title="Name and save presets" aria-label="Edit presets"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button></h2>
+      <h2>Presets <small id="presetInfo"></small><button class="iconbtn" id="pEdit" type="button" title="Edit presets: names, icons, move times" aria-label="Edit presets"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button></h2>
       <div class="presets" id="presets"></div>
     </section>
   </aside>
@@ -856,6 +885,24 @@ body.midgrab, body.midgrab *{cursor:move!important}
   </div>
 </dialog>
 
+<dialog class="confirm preseted" id="pedDlg" aria-labelledby="pedTitle">
+  <div class="ped-head"><h2 id="pedTitle">Presets</h2><button class="iconbtn" id="pedClose" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+  <div class="pedcols" aria-hidden="true"><span></span><span>Icon</span><span>Name</span><span>Move time</span><span>Save</span></div>
+  <div class="pedlist" id="pedList"></div>
+  <p class="note">Changes are kept at once. <b>Save</b> stores the camera's current view in that slot (tap twice to overwrite). The move time applies to straight moves; <i>Standard</i> uses Settings → Presets. The small save button next to each preset tile does the same with a double-click.</p>
+</dialog>
+
+<dialog class="confirm iconpick" id="iconDlg" aria-labelledby="iconTitle">
+  <h2 id="iconTitle">Icon for preset <span id="iconTok"></span></h2>
+  <input type="search" id="iconSearch" placeholder="Search icons (English), e.g. mic, theater, user, music" aria-label="Search icons" autocomplete="off" spellcheck="false">
+  <p class="note" id="iconHint"></p>
+  <div class="icongrid" id="iconGrid" role="listbox" aria-label="Icons"></div>
+  <div class="btns">
+    <button class="btn" id="iconNone" type="button">No icon</button>
+    <button class="btn" id="iconCancel" type="button">Cancel</button>
+  </div>
+</dialog>
+
 <dialog class="confirm" id="quitDlg" aria-labelledby="quitTitle">
   <h2 id="quitTitle">A recording is running</h2>
   <p class="note">Closing Orbital stops the recording. Everything recorded so far is kept.</p>
@@ -880,6 +927,9 @@ const E = {
   recForm:$('#recForm'), rfFolder:$('#rfFolder'), rfBrowse:$('#rfBrowse'), rfSplit:$('#rfSplit'), rfStream:$('#rfStream'), rfSave:$('#rfSave'), rfNote:$('#rfNote'),
   srvLog:$('#srvLog'), logCopy:$('#logCopy'), logFolder:$('#logFolder'), logFollow:$('#logFollow'), appVer:$('#appVer'),
   quitDlg:$('#quitDlg'), quitOk:$('#quitOk'), quitCancel:$('#quitCancel'),
+  pedDlg:$('#pedDlg'), pedList:$('#pedList'), pedClose:$('#pedClose'),
+  iconDlg:$('#iconDlg'), iconTok:$('#iconTok'), iconSearch:$('#iconSearch'), iconGrid:$('#iconGrid'), iconHint:$('#iconHint'),
+  iconNone:$('#iconNone'), iconCancel:$('#iconCancel'),
   video:$('#video'), stage:$('#stage'), overlay:$('#overlay'), hud:$('#hud'),
   recPill:$('#recPill'), recDir:$('#recDir'), empty:$('#empty'), emptyTitle:$('#emptyTitle'), emptyText:$('#emptyText'), emptyStart:$('#emptyStart'),
   statusDot:$('#statusDot'), statusText:$('#statusText'), banner:$('#envBanner'),
@@ -940,7 +990,7 @@ function setStatus(kind, text){ E.statusDot.dataset.s = kind; E.statusText.textC
 function banner(text, err){ E.banner.textContent = text; E.banner.classList.toggle('err', !!err); E.banner.hidden = !text; }
 function note(text, kind){ E.connNote.textContent = text || ''; E.connNote.className = 'note' + (kind ? ' ' + kind : ''); E.connNote.hidden = !text; }
 const sleep = (ms) => new Promise(res => setTimeout(res, ms));
-const settingsOpen = () => E.dlg.open || E.quitDlg.open;
+const settingsOpen = () => E.dlg.open || E.quitDlg.open || E.iconDlg.open || E.pedDlg.open;
 
 async function api(path, body){
   const opt = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Orbital': '1'}, body: JSON.stringify(body)};
@@ -1449,14 +1499,68 @@ function renderPTZ(){
 /* ---------- presets (stored in the camera) ---------- */
 async function loadPresets(){
   if (!S.ptzOk) return;
-  try { const r = await api('/api/ptz/presets'); S.presets = r.presets || []; S.presetNames = r.names || {}; S.durations = r.durations || {}; if (r.active) S.active = r.active; }
+  try { const r = await api('/api/ptz/presets'); S.presets = r.presets || []; S.presetNames = r.names || {}; S.durations = r.durations || {}; S.picons = r.icons || {}; if (r.active) S.active = r.active; }
   catch (e) { S.presets = []; log(`Presets not readable: ${e.message}`, 'warn'); }
   const st = S.status || {}, w = st.control && st.control.kind === 'web' ? st.control.web : null;
   const max = w ? w.presets_max : (st.onvif && st.onvif.ptz_node && st.onvif.ptz_node.presets_max);
   E.presetInfo.textContent = `${S.presets.length} in the camera${max ? ` · max. ${max}` : ''}`;
-  renderPresets(!(document.activeElement && document.activeElement.tagName === 'INPUT' && E.presets.contains(document.activeElement)));
+  renderPresets();
+  if (E.pedDlg.open) renderPresetEditor();
 }
 function presetFor(token){ return S.presets.find(p => p.token === token); }
+/* Lucide icons for the presets: the whole set is loaded once from the server (lucide-icons.json) */
+S.lucide = null;
+function lucide(name, cls){
+  const it = name && S.lucide && S.lucide[name];
+  return it ? `<svg class="ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${it[0]}</svg>` : '';
+}
+async function loadLucide(){
+  try { const r = await fetch('/lucide-icons.json'); if (r.ok){ S.lucide = (await r.json()).icons; renderPresets(); } } catch {}
+}
+const ICON_PICKS = ['user', 'users', 'user-round', 'person-standing', 'baby', 'hand', 'mic', 'mic-vocal', 'music', 'music-2', 'guitar',
+  'piano', 'drum', 'speaker', 'theater', 'drama', 'presentation', 'projector', 'clapperboard', 'film', 'video', 'camera', 'tv',
+  'monitor', 'door-open', 'door-closed', 'armchair', 'sofa', 'church', 'school', 'building', 'house', 'landmark', 'tent', 'trees',
+  'flower-2', 'sun', 'moon', 'star', 'sparkles', 'heart', 'flag', 'map-pin', 'target', 'crosshair', 'focus', 'scan', 'eye',
+  'maximize', 'minimize', 'zoom-in', 'zoom-out', 'party-popper', 'cake', 'gift', 'trophy', 'book-open', 'graduation-cap',
+  'lightbulb', 'lamp', 'flashlight', 'table', 'utensils', 'coffee', 'wine', 'gem', 'crown', 'circle-dot', 'arrow-left',
+  'arrow-right', 'arrow-up', 'arrow-down', 'move', 'rotate-ccw'];
+let iconFor = null;
+function renderIconGrid(){
+  const q = E.iconSearch.value.trim().toLowerCase(), all = S.lucide || {};
+  let list;
+  if (!q) list = ICON_PICKS.filter(n => all[n]);
+  else {
+    const words = q.split(/\s+/);
+    list = Object.keys(all).filter(n => words.every(w => n.includes(w) || all[n][1].includes(w)));
+    list.sort((a, b) => (a.startsWith(q) ? 0 : 1) - (b.startsWith(q) ? 0 : 1) || a.length - b.length);
+  }
+  const shown = list.slice(0, 300), cur = (S.picons || {})[iconFor];
+  E.iconHint.textContent = !S.lucide ? 'Icons are not available (lucide-icons.json missing).'
+    : q ? `${list.length} found${list.length > shown.length ? ` – showing ${shown.length}, refine the search` : ''}` : `A selection – search for any of the ${Object.keys(all).length} Lucide icons.`;
+  E.iconGrid.textContent = '';
+  shown.forEach(n => {
+    const b = document.createElement('button'); b.type = 'button'; b.title = n; b.setAttribute('role', 'option');
+    b.setAttribute('aria-label', n); b.setAttribute('aria-selected', String(n === cur));
+    b.innerHTML = lucide(n);
+    b.addEventListener('click', () => setPresetIcon(n));
+    E.iconGrid.append(b);
+  });
+}
+function openIconPicker(tok){
+  iconFor = tok; E.iconTok.textContent = tok; E.iconSearch.value = '';
+  renderIconGrid(); E.iconDlg.showModal(); E.iconSearch.focus();
+}
+async function setPresetIcon(name){
+  const tok = iconFor; E.iconDlg.close();
+  try { const r = await api('/api/ptz/icon', {token: tok, icon: name || ''}); S.picons = r.icons; renderPresets(); if (E.pedDlg.open) renderPresetEditor(true); }
+  catch (e) { log(e.message, 'err'); }
+}
+E.iconSearch.addEventListener('input', renderIconGrid);
+E.iconSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); const f = E.iconGrid.querySelector('button'); if (f) f.click(); } });
+E.iconNone.addEventListener('click', () => setPresetIcon(''));
+E.iconCancel.addEventListener('click', () => E.iconDlg.close());
+E.iconDlg.addEventListener('click', (e) => { if (e.target === E.iconDlg) E.iconDlg.close(); });
+
 const DURATIONS = [['', 'Standard'], ['0', 'Fastest'], ['2', '2 s'], ['3', '3 s'], ['4', '4 s'], ['6', '6 s'], ['8', '8 s'],
                    ['10', '10 s'], ['15', '15 s'], ['20', '20 s'], ['30', '30 s'], ['45', '45 s'], ['60', '60 s']];
 const durLabel = (d) => d == null ? '' : (+d === 0 ? 'fast' : `${+d} s`);
@@ -1481,74 +1585,42 @@ async function pollActive(){
   }
   setTimeout(pollActive, 800);
 }
-function renderPresets(force){
-  // in edit mode, do not rebuild (the cursor would jump out of the name field)
-  if (S.posEdit && !force && E.presets.querySelector('.posedit')){
-    E.presets.querySelectorAll('.posedit .iconbtn').forEach(b => b.disabled = !S.ptzOk);
-    return;
-  }
+function renderPresets(){
   E.presets.textContent = '';
-  E.presets.classList.toggle('editing', !!S.posEdit);
   const names = S.presetNames || {};
   for (let i = 1; i <= SLOTS; i++){
     const tok = String(i), p = presetFor(tok), name = names[tok] || (p && p.label) || (p && p.name) || '';
-    if (S.posEdit){
-      const box = document.createElement('div'); box.className = 'posedit'; box.dataset.tok = tok;
-      const b = document.createElement('b'); b.textContent = tok;
-      const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'iconbtn'; sv.innerHTML = icon('save');
-      sv.title = p ? 'Save the current view here (overwrites)' : 'Save the current view here'; sv.disabled = !S.ptzOk;
-      let armed = null;
-      sv.addEventListener('click', () => {
-        if (p && !armed){ sv.classList.add('confirm'); sv.innerHTML = icon('check'); sv.title = 'Tap again to overwrite'; armed = setTimeout(() => { armed = null; sv.classList.remove('confirm'); sv.innerHTML = icon('save'); }, 2500); return; }
-        clearTimeout(armed); armed = null;
-        ptz('/api/ptz/setpreset', {token: tok, name: inp.value || `Preset${tok}`}).then(() => { log(`Preset ${tok} saved.`, 'ok'); loadPresets(); }).catch(() => renderPresets(true));
-      });
-      const inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 40; inp.value = name; inp.placeholder = p ? 'Name' : 'empty';
-      inp.setAttribute('aria-label', `Name of preset ${tok}`);
-      let t = null;
-      const saveName = () => { clearTimeout(t); api('/api/ptz/name', {token: tok, name: inp.value}).then(r => { S.presetNames = r.names; }).catch(e => log(e.message, 'err')); };
-      inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(saveName, 600); });
-      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); saveName(); inp.blur(); } });
-      inp.addEventListener('change', saveName);
-      const dur = document.createElement('select'); dur.className = 'pdur';
-      dur.title = 'Move time for this preset (straight moves). "Standard" uses Settings → Presets.';
-      dur.setAttribute('aria-label', `Move time of preset ${tok}`);
-      DURATIONS.forEach(([v, l]) => dur.add(new Option(l, v)));
-      const cur = (S.durations || {})[tok];
-      dur.value = cur == null ? '' : String(cur);
-      if (dur.value === '' && cur != null){ dur.add(new Option(`${cur} s`, String(cur))); dur.value = String(cur); }
-      dur.addEventListener('change', () => api('/api/ptz/duration', {token: tok, duration: dur.value === '' ? null : +dur.value})
-        .then(r => { S.durations = r.durations; loadPresets(); }).catch(e => log(e.message, 'err')));
-      box.append(b, inp, dur, sv); E.presets.append(box);
-    } else {
-      const wrap = document.createElement('div'); wrap.className = 'posw'; wrap.dataset.tok = tok;
-      const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'pos' + (p ? '' : ' vacant'); btn.dataset.tok = tok;
-      const b = document.createElement('b'); b.textContent = tok;
-      const n = document.createElement('span'); n.className = 'pn'; n.textContent = p ? (name || `Preset ${tok}`) : (name ? `${name} (empty)` : 'empty');
-      btn.append(b, n);
-      const dl = p ? durLabel(p.duration) : '';
-      if (dl){ const d = document.createElement('small'); d.className = 'pd'; d.textContent = dl; btn.append(d); }
-      if (p && p.straight){ const g = document.createElement('i'); g.className = 'gd'; g.setAttribute('aria-hidden', 'true'); btn.append(g); }
-      btn.disabled = !S.ptzOk || !p;
-      btn.title = p ? `Recall ${name || 'preset ' + tok} (key ${tok})${p.straight ? ' · straight move' : ' · the camera moves on its own, the target is learned meanwhile'}${dl ? ` · move time ${dl === 'fast' ? 'as fast as possible' : dl}` : ''}` : `Preset ${tok} is empty – save it with the pencil above`;
-      btn.addEventListener('click', () => goto(tok));
-      // quick save: double-click the small button next to the tile
-      const set = document.createElement('button'); set.type = 'button'; set.className = 'pset'; set.innerHTML = icon('save');
-      set.title = `Double-click: save the current view as ${name || 'preset ' + tok}${p ? ' (overwrites)' : ''}`;
-      set.setAttribute('aria-label', `Save the current view as preset ${tok} (double-click)`);
-      set.disabled = !S.ptzOk;
-      set.addEventListener('click', (e) => { if (e.detail > 1) return; clearTimeout(set._t); set._t = setTimeout(() => showLast(`Double-click to save preset ${tok}.`, 'warn'), 320); });
-      set.addEventListener('dblclick', () => clearTimeout(set._t));
-      set.addEventListener('dblclick', (e) => {
-        e.preventDefault(); set._dbl = true; setTimeout(() => { set._dbl = false; }, 600);
-        ptz('/api/ptz/setpreset', {token: tok, name: name || `Preset${tok}`}).then(() => {
-          log(`Preset ${tok}${name ? ` "${name}"` : ''} saved.`, 'ok');
-          set.classList.add('saved'); setTimeout(() => { set.classList.remove('saved'); loadPresets(); }, 900);
-        }).catch(() => {});
-      });
-      wrap.append(btn, set);
-      E.presets.append(wrap);
-    }
+    const wrap = document.createElement('div'); wrap.className = 'posw'; wrap.dataset.tok = tok;
+    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'pos' + (p ? '' : ' vacant'); btn.dataset.tok = tok;
+    const b = document.createElement('b'); b.textContent = tok;
+    const n = document.createElement('span'); n.className = 'pn';
+    const ico = p ? lucide((S.picons || {})[tok], 'pi') : '';
+    n.textContent = p ? (name || (ico ? '' : `Preset ${tok}`)) : (name ? `${name} (empty)` : 'empty');
+    btn.append(b);
+    if (ico){ btn.classList.add('hasicon'); btn.insertAdjacentHTML('beforeend', ico); }
+    if (n.textContent) btn.append(n);
+    const dl = p ? durLabel(p.duration) : '';
+    if (dl){ const d = document.createElement('small'); d.className = 'pd'; d.textContent = dl; btn.append(d); }
+    if (p && p.straight){ const g = document.createElement('i'); g.className = 'gd'; g.setAttribute('aria-hidden', 'true'); btn.append(g); }
+    btn.disabled = !S.ptzOk || !p;
+    btn.title = p ? `Recall ${name || 'preset ' + tok} (key ${tok})${p.straight ? ' · straight move' : ' · the camera moves on its own, the target is learned meanwhile'}${dl ? ` · move time ${dl === 'fast' ? 'as fast as possible' : dl}` : ''}` : `Preset ${tok} is empty – save it with the pencil above`;
+    btn.addEventListener('click', () => goto(tok));
+    // quick save: double-click the small button next to the tile
+    const set = document.createElement('button'); set.type = 'button'; set.className = 'pset'; set.innerHTML = icon('save');
+    set.title = `Double-click: save the current view as ${name || 'preset ' + tok}${p ? ' (overwrites)' : ''}`;
+    set.setAttribute('aria-label', `Save the current view as preset ${tok} (double-click)`);
+    set.disabled = !S.ptzOk;
+    set.addEventListener('click', (e) => { if (e.detail > 1) return; clearTimeout(set._t); set._t = setTimeout(() => showLast(`Double-click to save preset ${tok}.`, 'warn'), 320); });
+    set.addEventListener('dblclick', () => clearTimeout(set._t));
+    set.addEventListener('dblclick', (e) => {
+      e.preventDefault(); set._dbl = true; setTimeout(() => { set._dbl = false; }, 600);
+      ptz('/api/ptz/setpreset', {token: tok, name: name || `Preset${tok}`}).then(() => {
+        log(`Preset ${tok}${name ? ` "${name}"` : ''} saved.`, 'ok');
+        set.classList.add('saved'); setTimeout(() => { set.classList.remove('saved'); loadPresets(); }, 900);
+      }).catch(() => {});
+    });
+    wrap.append(btn, set);
+    E.presets.append(wrap);
   }
   applyActive();
   const extra = S.presets.filter(p => !/^[1-9]$/.test(p.token));
@@ -1559,7 +1631,60 @@ function renderPresets(force){
   });
   E.extraWrap.hidden = !extra.length;
 }
-E.pEdit.addEventListener('click', () => { S.posEdit = !S.posEdit; E.pEdit.setAttribute('aria-pressed', String(S.posEdit)); renderPresets(true); fitControls(); });
+
+/* ---------- preset editor (dialog): name, icon, move time, save the current view ---------- */
+function renderPresetEditor(force){
+  // do not rebuild while a name is being typed (the cursor would jump out of the field)
+  if (!force && E.pedList.contains(document.activeElement) && document.activeElement.tagName === 'INPUT'){
+    E.pedList.querySelectorAll('.pedrow > .iconbtn:last-child').forEach(b => b.disabled = !S.ptzOk);
+    return;
+  }
+  E.pedList.textContent = '';
+  const names = S.presetNames || {};
+  for (let i = 1; i <= SLOTS; i++){
+    const tok = String(i), p = presetFor(tok), name = names[tok] || (p && p.label) || (p && p.name) || '';
+    const box = document.createElement('div'); box.className = 'pedrow'; box.dataset.tok = tok;
+    const b = document.createElement('b'); b.textContent = tok;
+    const sv = document.createElement('button'); sv.type = 'button'; sv.className = 'iconbtn'; sv.innerHTML = icon('save');
+    sv.title = p ? 'Save the current view here (overwrites)' : 'Save the current view here'; sv.disabled = !S.ptzOk;
+    let armed = null;
+    sv.addEventListener('click', () => {
+      if (p && !armed){ sv.classList.add('confirm'); sv.innerHTML = icon('check'); sv.title = 'Tap again to overwrite'; armed = setTimeout(() => { armed = null; sv.classList.remove('confirm'); sv.innerHTML = icon('save'); }, 2500); return; }
+      clearTimeout(armed); armed = null;
+      ptz('/api/ptz/setpreset', {token: tok, name: inp.value || `Preset${tok}`}).then(() => { log(`Preset ${tok} saved.`, 'ok'); loadPresets(); }).catch(() => renderPresetEditor(true));
+    });
+    const inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 40; inp.value = name; inp.placeholder = p ? 'Name' : 'empty';
+    inp.setAttribute('aria-label', `Name of preset ${tok}`);
+    let t = null;
+    const saveName = () => { clearTimeout(t); api('/api/ptz/name', {token: tok, name: inp.value}).then(r => { S.presetNames = r.names; }).catch(e => log(e.message, 'err')); };
+    inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(saveName, 600); });
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); saveName(); inp.blur(); } });
+    inp.addEventListener('change', saveName);
+    const dur = document.createElement('select'); dur.className = 'pdur';
+    dur.title = 'Move time for this preset (straight moves). "Standard" uses Settings → Presets.';
+    dur.setAttribute('aria-label', `Move time of preset ${tok}`);
+    DURATIONS.forEach(([v, l]) => dur.add(new Option(l, v)));
+    const cur = (S.durations || {})[tok];
+    dur.value = cur == null ? '' : String(cur);
+    if (dur.value === '' && cur != null){ dur.add(new Option(`${cur} s`, String(cur))); dur.value = String(cur); }
+    dur.addEventListener('change', () => api('/api/ptz/duration', {token: tok, duration: dur.value === '' ? null : +dur.value})
+      .then(r => { S.durations = r.durations; loadPresets(); }).catch(e => log(e.message, 'err')));
+    const ib = document.createElement('button'); ib.type = 'button'; ib.className = 'iconbtn picon';
+    const curIcon = (S.picons || {})[tok];
+    ib.innerHTML = lucide(curIcon) || lucide('smile-plus') || '+';
+    ib.classList.toggle('set', !!lucide(curIcon));
+    ib.title = curIcon ? `Icon: ${curIcon} – click to change` : 'Choose an icon instead of (or with) a name';
+    ib.setAttribute('aria-label', `Icon of preset ${tok}`);
+    ib.addEventListener('click', () => openIconPicker(tok));
+    box.append(b, ib, inp, dur, sv); E.pedList.append(box);
+  }
+}
+function openPresetEditor(){ renderPresetEditor(true); E.pedDlg.showModal(); }
+E.pEdit.addEventListener('click', openPresetEditor);
+E.pedClose.addEventListener('click', () => E.pedDlg.close());
+E.pedDlg.addEventListener('click', (e) => { if (e.target === E.pedDlg) E.pedDlg.close(); });
+E.pedDlg.addEventListener('close', () => loadPresets());
+
 function goto(tok){
   if (!S.ptzOk) return;
   if (/^[1-9]$/.test(tok) && !presetFor(tok)){ log(`Preset ${tok} is not saved yet.`, 'warn'); return; }
@@ -1968,7 +2093,7 @@ function placePresets(){
   // (e.g. 16:10 screens) – that leaves more room for the joystick in the column.
   const below = PPANEL.parentElement === STAGECOL;
   let want = false;
-  if (matchMedia('(min-width: 900px)').matches && !S.posEdit){
+  if (matchMedia('(min-width: 900px)').matches ){
     const spare = innerHeight - E.stage.getBoundingClientRect().bottom - 16;
     want = spare >= (below ? PPANEL.offsetHeight : 56) + 12;
   }
@@ -2459,7 +2584,8 @@ if (location.protocol === 'file:'){
 }
 
 setInterval(() => { fetch('/api/ping', {cache: 'no-store'}).catch(() => {}); }, 4000);
-pollActive();   // keeps the app alive in an Edge/Chrome app window
+pollActive();
+loadLucide();   // keeps the app alive in an Edge/Chrome app window
 window.addEventListener('pagehide', () => { if (anyInput() || (S.motion && S.motion.moving)) fetch('/api/joy/halt', {method: 'POST', keepalive: true, headers: {'Content-Type': 'application/json', 'X-Orbital': '1'}, body: '{}'}).catch(() => {}); });
 })();
 </script>

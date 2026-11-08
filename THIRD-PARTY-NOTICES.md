@@ -6,7 +6,9 @@
 activity, aperture, camera, cctv, check, circle, copy, film, flower-2, focus, folder-open, grid-3x3,
 house, keyboard, lock, maximize, mic, minus, mountain, pencil, plus, refresh-cw, rotate-cw, route,
 ruler, save, scan-eye, settings, sliders-horizontal, spline, square, sun, terminal, video,
-volume-2, volume-x, x, zoom-in. 
+volume-2, volume-x, x, zoom-in.
+`lucide-icons.json` contains the complete Lucide icon set (version 0.460.0, SVG contents and
+search tags) for the preset icons; it is generated from the lucide repository. 
 
 ```
 ISC License

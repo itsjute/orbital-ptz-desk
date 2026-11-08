@@ -11,7 +11,7 @@ import os
 FULL = os.environ.get("PTZ_BUILD_FULL") == "1"
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))  # noqa: F821 (defined by PyInstaller)
 
-datas = [(os.path.join(ROOT, n), ".") for n in ("index.html", "config.example.ini", "version.txt")
+datas = [(os.path.join(ROOT, n), ".") for n in ("index.html", "lucide-icons.json", "config.example.ini", "version.txt")
          if os.path.exists(os.path.join(ROOT, n))]
 
 a = Analysis(  # noqa: F821
