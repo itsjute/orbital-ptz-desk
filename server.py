@@ -1169,6 +1169,24 @@ class PresetNames:
             self._save()
         return self.names
 
+    def backup(self, why):
+        """Copy presets.json aside before a change that touches every preset."""
+        dst = os.path.join(DATA_DIR, time.strftime("presets.backup-%Y-%m-%d_%H-%M-%S.json"))
+        try:
+            shutil.copy2(self.path, dst)
+            log(f"Presets backed up to {os.path.basename(dst)} ({why}).")
+        except OSError as e:
+            log(f"Presets could not be backed up ({e}).")
+        return dst
+
+    def shift_targets(self, dp, dt):
+        """Move every stored pan/tilt target by the same amount (camera coordinates shifted)."""
+        with self.lock:
+            for v in self.targets.values():
+                v["pan"], v["tilt"] = int(v["pan"]) + dp, int(v["tilt"]) + dt
+            self._save()
+        return len(self.targets)
+
     def clear(self, token):
         """Empty a slot: name, icon, move time and target go; the slot shows as empty."""
         token = str(token)
@@ -2694,6 +2712,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True})
         if path == "/api/ptz/active":
             return self._send(200, App.moves.active)
+        if path == "/api/ptz/visca":
+            return self._run(self._visca_pos)
         if path == "/api/log":
             try:
                 since = int(parse_qs(urlparse(self.path).query).get("since", ["0"])[0])
@@ -2770,6 +2790,9 @@ class Handler(BaseHTTPRequestHandler):
             "/api/ptz/setpreset": lambda: self._set_preset(data),
             "/api/ptz/name": lambda: {"names": App.names.set(data["token"], data.get("name", ""))},
             "/api/ptz/clear": lambda: self._clear_preset(data),
+            "/api/ptz/realign": lambda: self._realign(data),
+            "/api/ptz/realign/undo": self._realign_undo,
+            "/api/ptz/pt_reset": self._pt_reset,
             "/api/ptz/order": lambda: {"order": App.names.set_order(list(data["order"]))},
             "/api/ptz/icon": lambda: {"icons": App.names.set_icon(data["token"], data.get("icon", ""))},
             "/api/ptz/duration": lambda: {"durations": App.names.set_duration(data["token"], data.get("duration"))},
@@ -2820,6 +2843,52 @@ class Handler(BaseHTTPRequestHandler):
             if App.ptz.mode() == "onvif":
                 raise
         return self._status_dict()
+
+    # --- after a power cut the camera may count pan/tilt from another zero point: all stored
+    # targets are then off by the same amount. Aim at one preset's view by hand, and shift all.
+    def _visca_pos(self):
+        link = App.moves.visca()
+        p, t, *_ = link.pantilt()
+        try:
+            z = link.zoom()[0]
+        except Exception:  # noqa
+            z = None
+        return {"pan": p, "tilt": t, "zoom": z, "targets": App.names.targets}
+
+    def _realign(self, data):
+        tok = str(data["token"])
+        z = App.names.targets.get(tok)
+        if not z:
+            raise ValueError("this preset has no stored position")
+        App.moves.cancel()
+        p, t, *_ = App.moves.visca().pantilt()
+        dp, dt = p - int(z["pan"]), t - int(z["tilt"])
+        App.names.backup(f"before shifting all positions by {dp:+d}/{dt:+d}")
+        App._realign_undo = (-dp, -dt)
+        n = App.names.shift_targets(dp, dt)
+        App.moves._set_active(tok, "at")
+        log(f"Positions re-aligned on preset {tok}: all {n} targets shifted by pan {dp:+d}, tilt {dt:+d}.")
+        return {"shift": [dp, dt], "count": n}
+
+    def _realign_undo(self):
+        u = getattr(App, "_realign_undo", None)
+        if not u:
+            raise ValueError("nothing to undo")
+        n = App.names.shift_targets(*u)
+        App._realign_undo = None
+        log(f"Re-alignment undone ({n} targets shifted back).")
+        return {"shift": list(u), "count": n}
+
+    def _pt_reset(self):
+        """VISCA Pan-tiltDrive Reset: the camera runs to its end stops and counts from zero again."""
+        App.moves.cancel()
+        App.motion.engine.halt()
+        App.moves.manual()
+        err = App.moves.visca().error_of(App.moves.visca().xfer(b"\x81\x01\x06\x05\xff"))
+        if err:
+            raise OnvifError(f"The camera refused the pan/tilt reset ({err})")
+        log("Pan/tilt reset sent – the camera re-homes its pan and tilt.")
+        return {"ok": True}
 
     def _clear_preset(self, data):
         tok = str(data["token"])

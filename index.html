@@ -525,6 +525,7 @@ body.midgrab, body.midgrab *{cursor:move!important}
 .pedrow .iconbtn:disabled{opacity:.35;cursor:not-allowed}
 .pedrow .pdel.confirm{background:var(--tally);border-color:var(--tally);color:#fff}
 .pedrow .pdel:not(:disabled):hover{color:var(--tally);border-color:var(--tally)}
+output.mono{font:500 13px/1.5 var(--f-mono);font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -838,6 +839,21 @@ body.midgrab, body.midgrab *{cursor:move!important}
           <p class="note">Presets are stored in the camera and also work with its remote and other software. Names and VISCA targets live in presets.json. To name or save a preset, use the pencil next to the presets; there you can also give each preset its own move time (otherwise the settings above apply).</p>
         </div>
       </section>
+      <section class="panel">
+        <h2>After a power cut</h2>
+        <div class="stack">
+          <p class="note">If presets suddenly land beside their target (zoom right, pan/tilt off), the camera counts pan and tilt from another zero point than before. Your stored positions are still there – they only need to be shifted. Try in this order:</p>
+          <p class="note"><b>1. Re-home pan/tilt.</b> The camera drives to its end stops and counts from its real zero point again. Afterwards, recall a preset to check.</p>
+          <div class="btns"><button class="btn" id="raHome" type="button">Re-home pan/tilt</button><span class="note" id="raHomeInfo"></span></div>
+          <p class="note"><b>2. Re-align on one preset.</b> Steer the camera by hand to exactly the view a preset had (joystick, double-click), choose that preset and press <i>Shift all</i>: every stored position moves by the same difference. A backup of presets.json is made first.</p>
+          <div class="kv3">
+            <label class="field"><span>Preset whose view the camera shows now</span><select id="raTok"></select></label>
+            <div class="field"><span class="lbl">Camera now (VISCA)</span><output id="raNow" class="mono">–</output></div>
+            <div class="field"><span class="lbl">Stored for this preset</span><output id="raStored" class="mono">–</output></div>
+          </div>
+          <div class="btns"><button class="btn primary" id="raGo" type="button">Shift all</button><button class="btn" id="raUndo" type="button" hidden>Undo</button><span class="note" id="raInfo"></span></div>
+        </div>
+      </section>
       </div>
       <div class="pane" data-pane="recordings" role="tabpanel">
     <section class="panel">
@@ -983,6 +999,8 @@ const E = {
   recForm:$('#recForm'), rfFolder:$('#rfFolder'), rfBrowse:$('#rfBrowse'), rfSplit:$('#rfSplit'), rfStream:$('#rfStream'), rfSave:$('#rfSave'), rfNote:$('#rfNote'),
   srvLog:$('#srvLog'), logCopy:$('#logCopy'), logFolder:$('#logFolder'), logFollow:$('#logFollow'), appVer:$('#appVer'),
   quitDlg:$('#quitDlg'), quitOk:$('#quitOk'), quitCancel:$('#quitCancel'),
+  raHome:$('#raHome'), raHomeInfo:$('#raHomeInfo'), raTok:$('#raTok'), raNow:$('#raNow'), raStored:$('#raStored'),
+  raGo:$('#raGo'), raUndo:$('#raUndo'), raInfo:$('#raInfo'),
   pedDlg:$('#pedDlg'), pedList:$('#pedList'), pedClose:$('#pedClose'),
   iconDlg:$('#iconDlg'), iconTok:$('#iconTok'), iconSearch:$('#iconSearch'), iconGrid:$('#iconGrid'), iconHint:$('#iconHint'),
   iconNone:$('#iconNone'), iconCancel:$('#iconCancel'),
@@ -2044,6 +2062,7 @@ function showTab(t){
   if (t === 'recordings') loadPost();
   if (t === 'audio') loadAudio();
   if (t === 'camera' || t === 'recordings') loadConfig();
+  if (t === 'presets') startRealignPoll();
   if (t === 'log') pollLog();
 }
 function openSettings(t){
@@ -2175,6 +2194,50 @@ E.logCopy.addEventListener('click', () => {
   try { navigator.clipboard.writeText(t).then(() => log('Server log copied.', 'ok'), () => log('Copying not possible.', 'warn')); } catch { log('Copying not possible.', 'warn'); }
 });
 E.logFolder.addEventListener('click', async () => { try { await api('/api/log/open', {}); } catch (e) { log(e.message, 'err'); } });
+
+
+/* ---------- after a power cut: re-home, or shift all stored positions ---------- */
+S.ra = null;
+async function pollRealign(){
+  if (!(E.dlg.open && E.dlg.querySelector('.pane.on')?.dataset.pane === 'presets')){ S.raPoll = false; return; }
+  try {
+    const r = await api('/api/ptz/visca'); S.ra = r;
+    E.raNow.textContent = `pan ${r.pan} · tilt ${r.tilt}${r.zoom != null ? ` · zoom ${r.zoom}` : ''}`;
+    const toks = Object.keys(r.targets).sort();
+    if ([...E.raTok.options].map(o => o.value).join() !== toks.join()){
+      const cur = E.raTok.value; E.raTok.textContent = '';
+      toks.forEach(t => E.raTok.add(new Option(`${posOf(t)} – ${(S.presetNames || {})[t] || 'Preset ' + posOf(t)}`, t)));
+      if (toks.includes(cur)) E.raTok.value = cur;
+    }
+    const z = r.targets[E.raTok.value];
+    E.raStored.textContent = z ? `pan ${z.pan} · tilt ${z.tilt}${z.zoom != null ? ` · zoom ${z.zoom}` : ''}  (difference ${r.pan - z.pan >= 0 ? '+' : ''}${r.pan - z.pan} / ${r.tilt - z.tilt >= 0 ? '+' : ''}${r.tilt - z.tilt})` : '–';
+    E.raGo.disabled = !z;
+  } catch (e) { E.raNow.textContent = e.message; E.raGo.disabled = true; }
+  setTimeout(pollRealign, 1000);
+}
+function startRealignPoll(){ if (!S.raPoll){ S.raPoll = true; pollRealign(); } }
+E.raTok.addEventListener('change', () => { S.raPoll = false; startRealignPoll(); });
+let raArm = null;
+E.raGo.addEventListener('click', async () => {
+  if (!raArm){ E.raGo.textContent = 'Sure? Shift all positions'; raArm = setTimeout(() => { raArm = null; E.raGo.textContent = 'Shift all'; }, 3000); return; }
+  clearTimeout(raArm); raArm = null; E.raGo.textContent = 'Shift all';
+  try {
+    const r = await api('/api/ptz/realign', {token: E.raTok.value});
+    E.raInfo.textContent = `${r.count} positions shifted by pan ${r.shift[0] >= 0 ? '+' : ''}${r.shift[0]}, tilt ${r.shift[1] >= 0 ? '+' : ''}${r.shift[1]}. Recall another preset to check.`;
+    E.raUndo.hidden = false; log(E.raInfo.textContent, 'ok');
+  } catch (e) { E.raInfo.textContent = e.message; log(e.message, 'err'); }
+});
+E.raUndo.addEventListener('click', async () => {
+  try { const r = await api('/api/ptz/realign/undo', {}); E.raInfo.textContent = `Undone – ${r.count} positions shifted back.`; E.raUndo.hidden = true; }
+  catch (e) { E.raInfo.textContent = e.message; }
+});
+let rhArm = null;
+E.raHome.addEventListener('click', async () => {
+  if (!rhArm){ E.raHome.textContent = 'Sure? The camera turns to its end stops'; rhArm = setTimeout(() => { rhArm = null; E.raHome.textContent = 'Re-home pan/tilt'; }, 3500); return; }
+  clearTimeout(rhArm); rhArm = null; E.raHome.textContent = 'Re-home pan/tilt';
+  try { await api('/api/ptz/pt_reset', {}); E.raHomeInfo.textContent = 'Sent – the camera re-homes (takes a moment). Then recall a preset.'; }
+  catch (e) { E.raHomeInfo.textContent = e.message; }
+});
 
 /* ---------- audio source ---------- */
 function renderAudio(){
