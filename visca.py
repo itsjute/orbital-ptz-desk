@@ -209,6 +209,12 @@ class Link:
     def expcomp_on(self, on):
         return self.xfer(bytes([0x81, 0x01, 0x04, 0x3E, 0x02 if on else 0x03, 0xFF]))
 
+    def zoom_var(self, direction, level):
+        """Variable-speed zoom: direction 1 tele, -1 wide, 0 stop · level 0 (slow) .. 7 (fast)."""
+        p = max(0, min(7, int(level)))
+        b = {1: 0x20 | p, -1: 0x30 | p, 0: 0x00}[direction]
+        return self.xfer(bytes([0x81, 0x01, 0x04, 0x07, b, 0xFF]))
+
     def zoom_direct(self, z):
         return self.xfer(b"\x81\x01\x04\x47" + nibbles(int(z), 4) + b"\xff")
 

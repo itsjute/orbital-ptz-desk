@@ -51,7 +51,8 @@ exactly as tall as the video – the joystick grows and shrinks with the availab
   the pencil opens the preset editor (name, icon, move time, save, clear). Drag a preset onto another place to change the order – the
   keys 1–9 follow the order on screen. Recalled presets move on a **straight, smooth line** – the
   server drives the move over VISCA and corrects it ten times a second, because the camera's own
-  preset recall finishes tilt early and draws a bent path. Zoom and locked focus are restored too.
+  preset recall finishes tilt early and draws a bent path. The zoom runs along the same curve, so
+  the move time also applies to presets that differ mainly in zoom; locked focus is restored too.
 - **Focus:** autofocus, lock, one-push focus (autofocus briefly, then lock), a focus rocker with
   variable speed, a 3× **loupe** for the image centre and a **sharpness meter** with peak hold.
 - **Exposure** (VISCA): auto, iris priority and manual; open the iris fully with one click;
@@ -164,6 +165,7 @@ folder of `server.py` when run from source (override with the environment variab
 | `presets.json` | preset names, icons, move times, order and their VISCA targets (pan, tilt, zoom, focus) |
 | `glide.json` | settings for straight preset moves |
 | `visca_speeds.json` | calibrated speed per VISCA level and axis |
+| `zoom_speeds.json` | zoom speed per variable-zoom level, learned during preset moves |
 | `click_scale.json` | learned image scale per zoom position for double-click aiming |
 | `audio.json` | chosen audio source |
 | `orbital.log` | server log (also shown under *Settings → Log*) |

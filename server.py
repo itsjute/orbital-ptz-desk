@@ -1361,10 +1361,16 @@ class PresetMoves:
             except Exception as e:  # noqa
                 log(f"VISCA not reachable ({e}) – the camera moves on its own.")
             else:
-                zoom_sent = self._zoom_to(link, z)
+                ramp = None
+                if z.get("zoom") is not None and self.glide.zoom_var_ok is not False:
+                    try:   # the zoom follows the same S-curve as pan and tilt
+                        ramp = (link.zoom()[0], int(z["zoom"]))
+                    except Exception:  # noqa
+                        ramp = None
+                zoom_sent = True if ramp else self._zoom_to(link, z)
                 plan = self.glide.start(link, (p, t), (int(z["pan"]), int(z["tilt"])),
                                         on_done=lambda ok: self._after(token, z, zoom_sent, gen),
-                                        duration=App.names.durations.get(token))
+                                        duration=App.names.durations.get(token), zoom=ramp)
                 return dict(plan, route="straight", token=token)
         App.ptz.goto(token)
         self._learn(token, gen, learn=self.glide.cfg["mode"] == "straight")

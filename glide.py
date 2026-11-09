@@ -26,6 +26,11 @@ K_POS = 1.6         # position controller gain (1/s)
 REST = 6            # leave this many units of remainder without an absolute command
 LEAD = 0.15         # look-ahead: dead time of inquiry, command and the camera's start-up ramp
 
+# Variable zoom speeds 0..7 in zoom units per second: a first guess, learned during moves
+DEFAULT_ZOOM_RATES = [12, 20, 32, 52, 85, 140, 230, 380]
+K_ZOOM = 2.0        # zoom position controller gain (1/s)
+ZOOM_REST = 4       # remainder left for a final direct zoom command
+
 LEGACY_CFG = {"modus": "mode", "stufe_max": "max_level", "dauer_min": "min_duration"}
 LEGACY_MODE = {"gerade": "straight", "kamera": "camera"}
 
@@ -107,6 +112,12 @@ class Glide:
                 self.measured = True
             except (KeyError, ValueError, TypeError, ZeroDivisionError):
                 self.speeds = Speeds()
+        self.zoom_path = os.path.join(base_dir, "zoom_speeds.json")
+        zj = _read_json(self.zoom_path) or {}
+        zr = zj.get("rates")
+        self.zrates = [float(v) for v in zr] if isinstance(zr, list) and len(zr) == 8 else list(DEFAULT_ZOOM_RATES)
+        self.zoom_sign = -1 if zj.get("sign") == -1 else 1   # -1: "tele" lowers the zoom value
+        self.zoom_var_ok = None      # does the camera take variable-speed zoom over VISCA?
         self.lock = threading.Lock()
         self.thread, self.abort = None, threading.Event()
         self.state = {"active": False}
@@ -139,12 +150,13 @@ class Glide:
         vp, vt = self.speeds.speed("pan", level), self.speeds.speed("tilt", level)
         return 1.875 * max(abs(dp) / vp, abs(dt) / vt)   # peak speed of the S-curve = 1.875 × mean
 
-    def duration(self, dp, dt, want=None):
+    def duration(self, dp, dt, want=None, dz=0):
         """want: None = the general settings; 0 = as fast as possible; > 0 = this many seconds
-        (never faster than the camera can move)."""
+        (never faster than the camera can move – pan, tilt and, if it goes along, zoom)."""
+        need_z = 1.875 * abs(dz) / (self.zrates[7] * 0.85) if dz else 0.0
         if want is None:
-            return max(self.cfg["min_duration"], self.need(dp, dt, self.cfg["max_level"]))
-        return max(0.8, float(want), self.need(dp, dt, self.FASTEST_LEVEL))
+            return max(self.cfg["min_duration"], self.need(dp, dt, self.cfg["max_level"]), need_z)
+        return max(0.8, float(want), self.need(dp, dt, self.FASTEST_LEVEL), need_z)
 
     # --- execution
     def cancel(self, wait=1.0):
@@ -153,19 +165,41 @@ class Glide:
             self.abort.set()
             th.join(wait)
 
-    def start(self, link, start, target, on_done=None, duration=None):
-        """start/target: (pan, tilt). Runs in the background; returns the plan."""
+    def start(self, link, start, target, on_done=None, duration=None, zoom=None):
+        """start/target: (pan, tilt); zoom: (from, to) to run the zoom along the same S-curve.
+        Runs in the background; returns the plan."""
         self.cancel()
         dp, dt = target[0] - start[0], target[1] - start[1]
-        T = self.duration(dp, dt, duration)
+        dz = (zoom[1] - zoom[0]) if zoom and None not in zoom else 0
+        T = self.duration(dp, dt, duration, dz)
         self.abort = threading.Event()
         self.state = {"active": True, "start": list(start), "target": list(target), "duration_s": round(T, 2), "t0": time.time()}
-        self.thread = threading.Thread(target=self._run, args=(link, start, target, T, self.abort, on_done), daemon=True)
+        self.thread = threading.Thread(target=self._run, args=(link, start, target, T, self.abort, on_done, zoom), daemon=True)
         self.thread.start()
         return {"duration_s": round(T, 2), "delta": [dp, dt]}
 
-    def _run(self, link, start, target, T, abort, on_done):
+    def _save_zoom_rates(self):
+        try:
+            tmp = self.zoom_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"rates": [round(v, 1) for v in self.zrates], "sign": self.zoom_sign}, f)
+            os.replace(tmp, self.zoom_path)
+        except OSError:
+            pass
+
+    def _zoom_level(self, v):
+        """Nearest variable zoom level for |v| units/s; None = stand still."""
+        v = abs(v)
+        if v < self.zrates[0] * 0.5:
+            return None
+        return min(range(8), key=lambda i: abs(math.log(max(self.zrates[i], 1e-3)) - math.log(v)))
+
+    def _run(self, link, start, target, T, abort, on_done, zoom=None):
         sent = None
+        # zoom along the same curve (variable-speed zoom, closed loop on the zoom position)
+        zr = None
+        if zoom and zoom[0] is not None and zoom[1] is not None and abs(zoom[1] - zoom[0]) > ZOOM_REST:
+            zr = {"z0": float(zoom[0]), "z1": float(zoom[1]), "sent": None, "last": None, "learned": False}
         dev_max, ok = 0.0, False
         D = (target[0] - start[0], target[1] - start[1])
         L = math.hypot(*D) or 1.0
@@ -197,8 +231,15 @@ class Glide:
                     (lp, dp_), (lt, dt_) = want
                     link.drive(lp or 1, lt or 1, dp_, dt_)
                     sent = want
+                if zr:
+                    self._zoom_tick(link, zr, t, T)
                 abort.wait(max(0.0, TICK - (time.monotonic() - t0 - t)))
             link.stop()
+            if zr:
+                if abort.is_set():
+                    link.zoom_var(0, 0)          # cancelled: just stop where the zoom is
+                else:
+                    self._zoom_finish(link, zr)
             if abort.is_set():
                 self.log("Move cancelled.")
                 return
@@ -213,6 +254,8 @@ class Glide:
             self.log(f"Move interrupted: {e}")
             try:
                 link.stop()
+                if zr:
+                    link.zoom_var(0, 0)
             except Exception:  # noqa
                 pass
         finally:
@@ -222,6 +265,58 @@ class Glide:
                     on_done(ok)
                 except Exception as e:  # noqa
                     self.log(f"After the move: {e}")
+
+    def _zoom_tick(self, link, zr, t, T):
+        now = time.monotonic()
+        z = float(link.zoom()[0])
+        # learn the real speed of the level that was running since the last tick
+        if zr["last"] and zr["sent"] and zr["sent"][0]:
+            (t_l, z_l), (d, lv) = zr["last"], zr["sent"]
+            dt_ = now - t_l
+            if dt_ > 0.05:
+                rate = (z - z_l) * d * self.zoom_sign / dt_
+                if rate > 0:
+                    self.zrates[lv] = 0.75 * self.zrates[lv] + 0.25 * rate
+                    zr["learned"] = True
+                    zr["wrong"] = 0
+                elif rate < -0.5 * self.zrates[lv]:
+                    # the zoom runs the other way than commanded: this camera counts tele downwards
+                    zr["wrong"] = zr.get("wrong", 0) + 1
+                    if zr["wrong"] >= 2:
+                        self.zoom_sign = -self.zoom_sign
+                        zr["wrong"], zr["learned"] = 0, True
+                        self.log("Zoom direction of this camera learned (tele = lower values).")
+        zr["last"] = (now, z)
+        D = zr["z1"] - zr["z0"]
+        tl = t + LEAD
+        s, ds = smooth(tl / T)
+        v = ds / T * D + K_ZOOM * (zr["z0"] + s * D - z)
+        if (zr["z1"] - z) * v <= 0 and tl >= T:   # never past the target
+            v = 0
+        lv = self._zoom_level(v)
+        want = (0, 0) if lv is None else ((1 if v > 0 else -1) * self.zoom_sign, lv)
+        if want != zr["sent"]:
+            err = link.error_of(link.zoom_var(want[0], want[1]))
+            if err and self.zoom_var_ok is None:
+                self.zoom_var_ok = False
+                self.log(f"Variable zoom not supported ({err}) – the zoom goes straight to the target.")
+                link.zoom_direct(int(zr["z1"]))
+                zr.clear()
+                return
+            self.zoom_var_ok = True
+            zr["sent"] = want
+
+    def _zoom_finish(self, link, zr):
+        if not zr:
+            return
+        try:
+            link.zoom_var(0, 0)
+            time.sleep(0.15)
+            if abs(float(link.zoom()[0]) - zr["z1"]) > ZOOM_REST:
+                link.zoom_direct(int(zr["z1"]))
+        finally:
+            if zr.get("learned"):
+                self._save_zoom_rates()
 
     # --- speed calibration
     LEVELS = (1, 2, 3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 24)
