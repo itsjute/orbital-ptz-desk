@@ -54,3 +54,8 @@ dist/
 version.txt
 selftest*.json
 presets.backup-*.json
+
+# --- itsjute-lab: private Teile nie hochladen ---
+/PROJEKT.md
+/medien/
+/einkauf/
